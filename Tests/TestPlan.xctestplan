@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "0EC606BD-02D7-4009-9F2A-9ECF5FDFD498",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "ClaudeCodeSDKTests",
+        "name" : "ClaudeCodeSDKTests"
+      }
+    }
+  ],
+  "version" : 1
+}

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(swift build:*)",
+      "Bash(swift test:*)",
+      "Bash(swift run:*)",
+      "Bash(/bin/zsh -l -c \"nonexistent-command --output-format=text --print Hello\")",
+      "Bash(echo:*)",
+      "Bash(timeout 10 swift run:*)",
+      "Bash(.build/debug/ClaudeCodeExample:*)",
+      "Bash(gtimeout 15 swift run:*)",
+      "Bash(node -e \"require(''@anthropic-ai/claude-code'')\")",
+      "Bash(claude --version)",
+      "Bash(node --version:*)",
+      "Bash(node -e:*)",
+      "Bash(/opt/homebrew/bin/node:*)",
+      "Bash(npm root:*)",
+      "Bash(/usr/local/bin/node:*)",
+      "Bash(cat:*)",
+      "Bash(NODE_PATH=/opt/homebrew/lib/node_modules node:*)",
+      "Bash(CLAUDE_DEBUG=1 CLAUDE_SDK_INTEGRATION_TESTS=1 swift test:*)",
+      "Bash(CLAUDE_SDK_INTEGRATION_TESTS=1 swift test:*)"
+    ]
+  }
+}
