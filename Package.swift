@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ClaudeCodeSDK",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v15)
     ],
     products: [
         .library(

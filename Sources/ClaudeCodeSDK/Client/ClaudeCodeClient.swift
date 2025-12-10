@@ -265,3 +265,73 @@ extension ClaudeCodeClient {
         return try await storage.listProjects()
     }
 }
+
+// MARK: - Interactive Session Extensions
+
+extension ClaudeCodeClient {
+    /// Creates a new interactive session for multi-turn conversations
+    /// - Parameter configuration: Optional session configuration
+    /// - Returns: A new interactive session
+    ///
+    /// Example usage:
+    /// ```swift
+    /// let session = try client.createInteractiveSession()
+    ///
+    /// // Stream responses
+    /// for try await event in session.send("Hello!") {
+    ///     switch event {
+    ///     case .text(let chunk):
+    ///         print(chunk, terminator: "")
+    ///     case .completed(let result):
+    ///         print("\nDone! Cost: $\(result.totalCostUsd)")
+    ///     default:
+    ///         break
+    ///     }
+    /// }
+    ///
+    /// // Continue the conversation
+    /// let response = try await session.sendAndWait("What did I just say?")
+    /// print(response.text)
+    ///
+    /// await session.end()
+    /// ```
+    public func createInteractiveSession(
+        configuration: InteractiveSessionConfiguration = .default
+    ) throws -> ClaudeInteractiveSession {
+        ClaudeInteractiveSession(
+            backend: backend,
+            clientConfiguration: self.configuration,
+            configuration: configuration
+        )
+    }
+
+    /// Creates a new interactive session with a system prompt
+    /// - Parameter systemPrompt: The system prompt to use
+    /// - Returns: A new interactive session
+    public func createInteractiveSession(
+        systemPrompt: String
+    ) throws -> ClaudeInteractiveSession {
+        var config = InteractiveSessionConfiguration.default
+        config.systemPrompt = systemPrompt
+        return try createInteractiveSession(configuration: config)
+    }
+
+    /// Creates a new interactive session with common options
+    /// - Parameters:
+    ///   - systemPrompt: Optional system prompt
+    ///   - maxTurns: Maximum turns per message (0 for unlimited)
+    ///   - allowedTools: Tools to allow (nil for all)
+    /// - Returns: A new interactive session
+    public func createInteractiveSession(
+        systemPrompt: String? = nil,
+        maxTurns: Int = 0,
+        allowedTools: [String]? = nil
+    ) throws -> ClaudeInteractiveSession {
+        let config = InteractiveSessionConfiguration(
+            systemPrompt: systemPrompt,
+            maxTurns: maxTurns,
+            allowedTools: allowedTools
+        )
+        return try createInteractiveSession(configuration: config)
+    }
+}

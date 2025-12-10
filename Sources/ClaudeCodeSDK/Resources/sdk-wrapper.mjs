@@ -29,12 +29,18 @@ function mapOptions(options) {
         sdkOptions.maxThinkingTokens = options.max_thinking_tokens;
     }
 
-    if (options.system_prompt) {
-        sdkOptions.systemPrompt = options.system_prompt;
-    }
-
+    // Handle system prompt - Agent SDK expects an object format for appending
+    // See: https://platform.claude.com/docs/en/agent-sdk/modifying-system-prompts
     if (options.append_system_prompt) {
-        sdkOptions.appendSystemPrompt = options.append_system_prompt;
+        // Use claude_code preset with append to preserve tool instructions
+        sdkOptions.systemPrompt = {
+            type: 'preset',
+            preset: 'claude_code',
+            append: options.append_system_prompt
+        };
+    } else if (options.system_prompt) {
+        // Custom system prompt replaces the default entirely
+        sdkOptions.systemPrompt = options.system_prompt;
     }
 
     if (options.allowed_tools) {
@@ -101,7 +107,7 @@ async function main() {
     // Map options to SDK format
     const sdkOptions = mapOptions(options);
 
-    // Debug output to stderr
+    // Debug output to stderr (only when DEBUG or CLAUDE_DEBUG is set)
     if (process.env.DEBUG || process.env.CLAUDE_DEBUG) {
         console.error('[sdk-wrapper] Prompt length:', prompt.length);
         console.error('[sdk-wrapper] Options:', JSON.stringify(sdkOptions, null, 2));
@@ -114,10 +120,8 @@ async function main() {
 
     try {
         // Execute the query and stream results
-        for await (const message of query({
-            prompt,
-            ...sdkOptions,
-        })) {
+        // Note: Agent SDK expects options in an 'options' object
+        for await (const message of query({ prompt, options: sdkOptions })) {
             // Track if tools were used
             if (message.type === 'assistant' && message.message?.content) {
                 for (const content of message.message.content) {

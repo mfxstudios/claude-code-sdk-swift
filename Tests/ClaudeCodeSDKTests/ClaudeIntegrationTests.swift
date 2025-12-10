@@ -851,3 +851,259 @@ enum IntegrationTestHelper {
         ClaudeCodeClient.detectAvailableBackends()
     }
 }
+
+// MARK: - Interactive Session Unit Tests
+
+@Suite("Interactive Session Unit Tests")
+struct InteractiveSessionUnitTests {
+
+    @Test("Interactive session can be created from client")
+    func createSession() throws {
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession()
+
+        #expect(session.sessionId == nil, "Session ID should be nil before first message")
+        #expect(session.isActive == true, "Session should be active")
+    }
+
+    @Test("Interactive session can be created with configuration")
+    func createSessionWithConfiguration() throws {
+        let client = ClaudeCodeClient()
+        let config = InteractiveSessionConfiguration(
+            systemPrompt: "You are a helpful assistant",
+            maxTurns: 5,
+            allowedTools: ["Read", "Write"],
+            disallowedTools: ["Bash"],
+            permissionPromptTool: .deny
+        )
+
+        let session = try client.createInteractiveSession(configuration: config)
+
+        #expect(session.configuration.systemPrompt == "You are a helpful assistant")
+        #expect(session.configuration.maxTurns == 5)
+        #expect(session.configuration.allowedTools == ["Read", "Write"])
+        #expect(session.configuration.disallowedTools == ["Bash"])
+        #expect(session.configuration.permissionPromptTool == .deny)
+    }
+
+    @Test("Interactive session can be created with system prompt convenience")
+    func createSessionWithSystemPrompt() throws {
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession(systemPrompt: "Be brief")
+
+        #expect(session.configuration.systemPrompt == "Be brief")
+    }
+
+    @Test("Interactive session configuration has correct defaults")
+    func configurationDefaults() {
+        let config = InteractiveSessionConfiguration.default
+
+        #expect(config.systemPrompt == nil)
+        #expect(config.maxTurns == 0)
+        #expect(config.allowedTools == nil)
+        #expect(config.disallowedTools == nil)
+        #expect(config.permissionPromptTool == .auto)
+        #expect(config.workingDirectory == nil)
+    }
+
+    @Test("Interactive event types are correct")
+    func eventTypes() {
+        // Test that event types can be constructed
+        let textEvent = InteractiveEvent.text("Hello")
+        let toolUseEvent = InteractiveEvent.toolUse(ToolUseInfo(id: "1", name: "Read", input: [:]))
+        let toolResultEvent = InteractiveEvent.toolResult(ToolResultInfo(toolUseId: "1", content: "result"))
+        let sessionStarted = InteractiveEvent.sessionStarted(SessionStartInfo(sessionId: "abc", tools: [], mcpServers: []))
+        let completed = InteractiveEvent.completed(InteractiveResult(
+            sessionId: "abc",
+            text: "Done",
+            isError: false,
+            numTurns: 1,
+            totalCostUsd: 0.001,
+            durationMs: 100,
+            usage: nil
+        ))
+        let error = InteractiveEvent.error(.cancelled)
+
+        // Just verify they can be created without crashing
+        if case .text(let t) = textEvent { #expect(t == "Hello") }
+        if case .toolUse(let t) = toolUseEvent { #expect(t.name == "Read") }
+        if case .toolResult(let t) = toolResultEvent { #expect(t.content == "result") }
+        if case .sessionStarted(let s) = sessionStarted { #expect(s.sessionId == "abc") }
+        if case .completed(let r) = completed { #expect(r.text == "Done") }
+        if case .error(let e) = error { #expect(e == .cancelled) }
+    }
+
+    @Test("Interactive result has correct properties")
+    func resultProperties() {
+        let result = InteractiveResult(
+            sessionId: "session-123",
+            text: "Response text",
+            isError: false,
+            numTurns: 3,
+            totalCostUsd: 0.0025,
+            durationMs: 1500,
+            usage: nil
+        )
+
+        #expect(result.sessionId == "session-123")
+        #expect(result.text == "Response text")
+        #expect(result.isError == false)
+        #expect(result.numTurns == 3)
+        #expect(result.totalCostUsd == 0.0025)
+        #expect(result.durationMs == 1500)
+    }
+
+    @Test("Interactive error types exist")
+    func errorTypes() {
+        let errors: [InteractiveError] = [
+            .sessionNotStarted,
+            .sessionEnded,
+            .sendFailed("test"),
+            .streamError("test"),
+            .cancelled
+        ]
+
+        #expect(errors.count == 5, "Should have 5 error types")
+    }
+
+    @Test("Session becomes inactive after end")
+    func sessionEndsBecomeInactive() async throws {
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession()
+
+        #expect(session.isActive == true)
+
+        await session.end()
+
+        #expect(session.isActive == false)
+    }
+
+    @Test("Permission prompt tool enum has correct raw values")
+    func permissionPromptToolValues() {
+        #expect(PermissionPromptTool.auto.rawValue == "auto")
+        #expect(PermissionPromptTool.deny.rawValue == "deny-all")
+        #expect(PermissionPromptTool.allow.rawValue == "allow-all")
+    }
+}
+
+// MARK: - Interactive Session Integration Tests
+
+@Suite("Interactive Session Integration Tests")
+struct InteractiveSessionIntegrationTests {
+
+    @Test("Interactive session can send and receive streaming response")
+    func streamingResponse() async throws {
+        let detection = IntegrationTestHelper.detection
+
+        try #require(detection.anyBackendAvailable, "No backend available")
+        try #require(IntegrationTestHelper.apiTestsEnabled, "API tests disabled. Set CLAUDE_SDK_INTEGRATION_TESTS=1")
+
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession(maxTurns: 1)
+
+        var receivedText = false
+        var receivedCompletion = false
+        var collectedText = ""
+
+        for try await event in session.send("Say 'INTERACTIVE_TEST_OK' and nothing else") {
+            switch event {
+            case .text(let chunk):
+                receivedText = true
+                collectedText += chunk
+            case .completed(let result):
+                receivedCompletion = true
+                #expect(!result.sessionId.isEmpty, "Should have session ID")
+            default:
+                break
+            }
+        }
+
+        #expect(receivedText, "Should receive text events")
+        #expect(receivedCompletion, "Should receive completion")
+        #expect(collectedText.contains("INTERACTIVE_TEST_OK"), "Should contain expected text")
+
+        await session.end()
+    }
+
+    @Test("Interactive session can use sendAndWait")
+    func sendAndWait() async throws {
+        let detection = IntegrationTestHelper.detection
+
+        try #require(detection.anyBackendAvailable, "No backend available")
+        try #require(IntegrationTestHelper.apiTestsEnabled, "API tests disabled. Set CLAUDE_SDK_INTEGRATION_TESTS=1")
+
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession(maxTurns: 1)
+
+        let result = try await session.sendAndWait("What is 2+2? Reply with just the number.")
+
+        #expect(!result.sessionId.isEmpty, "Should have session ID")
+        #expect(result.text.contains("4"), "Should contain the answer")
+        #expect(result.isError == false, "Should not be an error")
+
+        await session.end()
+    }
+
+    @Test("Interactive session maintains conversation context")
+    func conversationContext() async throws {
+        let detection = IntegrationTestHelper.detection
+
+        try #require(detection.headlessAvailable, "Headless backend required for conversation test")
+        try #require(IntegrationTestHelper.apiTestsEnabled, "API tests disabled. Set CLAUDE_SDK_INTEGRATION_TESTS=1")
+
+        var config = ClaudeCodeConfiguration.default
+        config.backend = .headless
+        let client = try ClaudeCodeClient(configuration: config)
+        let session = try client.createInteractiveSession(maxTurns: 1)
+
+        // First message
+        let result1 = try await session.sendAndWait("Remember this secret code: PURPLE_ELEPHANT_42. Reply with OK.")
+
+        #expect(!result1.sessionId.isEmpty, "Should have session ID")
+
+        // Second message - should remember the context
+        let result2 = try await session.sendAndWait("What was the secret code I told you?")
+
+        #expect(result2.text.contains("PURPLE_ELEPHANT_42") || result2.text.contains("PURPLE") || result2.text.contains("ELEPHANT"),
+                "Should remember the secret code from previous message")
+
+        await session.end()
+    }
+
+    @Test("Interactive response stream collectText works")
+    func collectText() async throws {
+        let detection = IntegrationTestHelper.detection
+
+        try #require(detection.anyBackendAvailable, "No backend available")
+        try #require(IntegrationTestHelper.apiTestsEnabled, "API tests disabled. Set CLAUDE_SDK_INTEGRATION_TESTS=1")
+
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession(maxTurns: 1)
+
+        let text = try await session.send("Say 'COLLECT_TEST' and nothing else").collectText()
+
+        #expect(text.contains("COLLECT_TEST"), "Collected text should contain expected content")
+
+        await session.end()
+    }
+
+    @Test("Interactive session with system prompt works")
+    func systemPrompt() async throws {
+        let detection = IntegrationTestHelper.detection
+
+        try #require(detection.anyBackendAvailable, "No backend available")
+        try #require(IntegrationTestHelper.apiTestsEnabled, "API tests disabled. Set CLAUDE_SDK_INTEGRATION_TESTS=1")
+
+        let client = ClaudeCodeClient()
+        let session = try client.createInteractiveSession(
+            systemPrompt: "You are a pirate. Always start your response with 'Arr!' and speak like a pirate.",
+            maxTurns: 1
+        )
+
+        let result = try await session.sendAndWait("Hello")
+
+        #expect(result.text.lowercased().contains("arr"), "Response should contain pirate speak")
+
+        await session.end()
+    }
+}

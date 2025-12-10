@@ -21,7 +21,8 @@
       "Bash(cat:*)",
       "Bash(NODE_PATH=/opt/homebrew/lib/node_modules node:*)",
       "Bash(CLAUDE_DEBUG=1 CLAUDE_SDK_INTEGRATION_TESTS=1 swift test:*)",
-      "Bash(CLAUDE_SDK_INTEGRATION_TESTS=1 swift test:*)"
+      "Bash(CLAUDE_SDK_INTEGRATION_TESTS=1 swift test:*)",
+      "Bash(NODE_PATH=/opt/homebrew/lib/node_modules /opt/homebrew/bin/node:*)"
     ]
   }
 }

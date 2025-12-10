@@ -238,6 +238,113 @@ func validateInstallationExample() async throws {
     print()
 }
 
+// MARK: - Example 11: Interactive Session
+
+func interactiveSessionExample() async throws {
+    print("=== Interactive Session Example ===\n")
+
+    let client = ClaudeCodeClient()
+
+    // Create an interactive session
+    let session = try client.createInteractiveSession(
+        systemPrompt: "You are a helpful assistant. Keep responses brief.",
+        maxTurns: 1
+    )
+
+    print("Session created. Session is active: \(session.isActive)")
+    print()
+
+    // First message with streaming
+    print("Sending: Hello! What's your name?")
+    print("Response: ", terminator: "")
+
+    for try await event in session.send("Hello! What's your name?") {
+        switch event {
+        case .text(let chunk):
+            print(chunk, terminator: "")
+            fflush(stdout)
+        case .sessionStarted(let info):
+            print("\n[Session started: \(info.sessionId)]")
+        case .toolUse(let tool):
+            print("\n[Using tool: \(tool.name)]")
+        case .completed(let result):
+            print("\n[Completed - Cost: $\(String(format: "%.6f", result.totalCostUsd))]")
+        case .error(let error):
+            print("\n[Error: \(error)]")
+        default:
+            break
+        }
+    }
+    print()
+
+    // Second message using sendAndWait
+    print("\nSending: What did I just ask you?")
+    let result = try await session.sendAndWait("What did I just ask you?")
+    print("Response: \(result.text)")
+    print("Turns: \(result.numTurns), Cost: $\(String(format: "%.6f", result.totalCostUsd))")
+
+    // End the session
+    await session.end()
+    print("\nSession ended. Session is active: \(session.isActive)")
+    print()
+}
+
+// MARK: - Example 12: Interactive CLI Chat Loop
+
+func interactiveChatExample() async throws {
+    print("=== Interactive Chat Example ===\n")
+    print("Type your messages and press Enter. Type 'exit' to quit.\n")
+
+    let client = ClaudeCodeClient()
+    let session = try client.createInteractiveSession(maxTurns: 1)
+
+    while true {
+        print("> ", terminator: "")
+        fflush(stdout)
+
+        guard let input = readLine(), !input.isEmpty else {
+            continue
+        }
+
+        if input.lowercased() == "exit" {
+            print("Goodbye!")
+            break
+        }
+
+        do {
+            // Stream the response
+            for try await event in session.send(input) {
+                if case .text(let chunk) = event {
+                    print(chunk, terminator: "")
+                    fflush(stdout)
+                }
+            }
+            print("\n")
+        } catch {
+            print("\nError: \(error)\n")
+        }
+    }
+
+    await session.end()
+}
+
+// MARK: - Example 13: Collect Response Text
+
+func collectTextExample() async throws {
+    print("=== Collect Response Text Example ===\n")
+
+    let client = ClaudeCodeClient()
+    let session = try client.createInteractiveSession(maxTurns: 1)
+
+    // Use collectText() to get the full response as a string
+    let text = try await session.send("Write a one-line joke about programming.").collectText()
+
+    print("Joke: \(text)")
+    print()
+
+    await session.end()
+}
+
 // MARK: - Main
 
 @main
@@ -265,6 +372,11 @@ struct ClaudeCodeExample {
 //             try await asyncSequenceExample()
 //             try await stdinExample()
 //             try await errorHandlingExample()
+
+            // Interactive Session examples (new!):
+//             try await interactiveSessionExample()
+//             try await collectTextExample()
+//             try await interactiveChatExample()  // Interactive chat loop
 
         } catch {
             print("Error: \(error)")

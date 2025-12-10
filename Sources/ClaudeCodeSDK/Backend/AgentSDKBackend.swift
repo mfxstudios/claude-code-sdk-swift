@@ -315,6 +315,9 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
             wrapperOptions.model = opts.model
             wrapperOptions.maxTurns = opts.maxTurns
             wrapperOptions.maxThinkingTokens = opts.maxThinkingTokens
+            // System prompt handling:
+            // - appendSystemPrompt uses claude_code preset with append (recommended)
+            // - systemPrompt replaces the default system prompt entirely
             wrapperOptions.systemPrompt = opts.systemPrompt
             wrapperOptions.appendSystemPrompt = opts.appendSystemPrompt
             wrapperOptions.allowedTools = opts.allowedTools
