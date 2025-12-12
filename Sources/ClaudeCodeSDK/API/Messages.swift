@@ -94,16 +94,147 @@ public struct ToolUseContent: Codable, Sendable, Equatable {
     }
 }
 
+/// Tool result content value - can be a string or an array of content blocks
+public enum ToolResultContentValue: Codable, Sendable, Equatable {
+    case text(String)
+    case blocks([ToolResultBlock])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        // Try to decode as string first
+        if let text = try? container.decode(String.self) {
+            self = .text(text)
+            return
+        }
+
+        // Try to decode as array of content blocks
+        if let blocks = try? container.decode([ToolResultBlock].self) {
+            self = .blocks(blocks)
+            return
+        }
+
+        throw DecodingError.typeMismatch(
+            ToolResultContentValue.self,
+            DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "Expected String or Array of content blocks for tool_result content"
+            )
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let text):
+            try container.encode(text)
+        case .blocks(let blocks):
+            try container.encode(blocks)
+        }
+    }
+
+    /// Returns the content as a string, joining blocks if necessary
+    public var stringValue: String {
+        switch self {
+        case .text(let text):
+            return text
+        case .blocks(let blocks):
+            return blocks.compactMap { block in
+                switch block {
+                case .text(let textBlock):
+                    return textBlock.text
+                case .image:
+                    return "[image]"
+                case .unknown:
+                    return nil
+                }
+            }.joined(separator: "\n")
+        }
+    }
+}
+
+/// A content block within a tool result
+public enum ToolResultBlock: Codable, Sendable, Equatable {
+    case text(ToolResultTextBlock)
+    case image(ToolResultImageBlock)
+    case unknown([String: AnyCodable])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicCodingKeys.self)
+
+        guard let typeKey = DynamicCodingKeys(stringValue: "type"),
+              let type = try? container.decode(String.self, forKey: typeKey) else {
+            let dict = try [String: AnyCodable](from: decoder)
+            self = .unknown(dict)
+            return
+        }
+
+        switch type {
+        case "text":
+            let content = try ToolResultTextBlock(from: decoder)
+            self = .text(content)
+        case "image":
+            let content = try ToolResultImageBlock(from: decoder)
+            self = .image(content)
+        default:
+            let dict = try [String: AnyCodable](from: decoder)
+            self = .unknown(dict)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .text(let content):
+            try content.encode(to: encoder)
+        case .image(let content):
+            try content.encode(to: encoder)
+        case .unknown(let dict):
+            try dict.encode(to: encoder)
+        }
+    }
+}
+
+/// Text block in a tool result
+public struct ToolResultTextBlock: Codable, Sendable, Equatable {
+    public let type: String
+    public let text: String
+}
+
+/// Image block in a tool result
+public struct ToolResultImageBlock: Codable, Sendable, Equatable {
+    public let type: String
+    public let source: ImageSource
+
+    public struct ImageSource: Codable, Sendable, Equatable {
+        public let type: String
+        public let mediaType: String
+        public let data: String
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case mediaType = "media_type"
+            case data
+        }
+    }
+}
+
 /// Tool result content in a message
 public struct ToolResultContent: Codable, Sendable, Equatable {
     public let type: String
     public let toolUseId: String
-    public let content: String?
+    public let content: ToolResultContentValue?
+    public let isError: Bool?
 
     enum CodingKeys: String, CodingKey {
         case type
         case toolUseId = "tool_use_id"
         case content
+        case isError = "is_error"
+    }
+
+    /// Returns the content as a string for convenience
+    public var contentString: String? {
+        content?.stringValue
     }
 }
 

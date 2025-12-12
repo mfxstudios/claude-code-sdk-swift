@@ -178,7 +178,7 @@ public final class ClaudeInteractiveSession: InteractiveSessionProtocol, @unchec
                     case .toolResult(let toolResult):
                         continuation.yield(.toolResult(ToolResultInfo(
                             toolUseId: toolResult.toolUseId,
-                            content: toolResult.content
+                            content: toolResult.contentString
                         )))
 
                     case .unknown:
