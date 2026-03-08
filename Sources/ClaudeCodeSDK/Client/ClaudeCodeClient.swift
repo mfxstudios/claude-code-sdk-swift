@@ -132,12 +132,21 @@ public final class ClaudeCodeClient: ClaudeCodeProtocol, @unchecked Sendable {
 // MARK: - Convenience Extensions
 
 extension ClaudeCodeClient {
+    /// Logs a warning to stderr if the specified model is deprecated
+    private func warnIfDeprecatedModel(_ options: ClaudeCodeOptions?) {
+        guard configuration.enableDebugLogging,
+              let model = options?.model,
+              model.isDeprecated else { return }
+        fputs("[ClaudeCodeSDK WARNING] Model '\(model.rawValue)' is deprecated. Consider using a current model.\n", stderr)
+    }
+
     /// Runs a prompt and waits for the complete result
     /// - Parameters:
     ///   - prompt: The prompt to send
     ///   - options: Optional execution options
     /// - Returns: The result message
     public func ask(_ prompt: String, options: ClaudeCodeOptions? = nil) async throws -> ResultMessage {
+        warnIfDeprecatedModel(options)
         let result = try await runSinglePrompt(prompt: prompt, outputFormat: .json, options: options)
 
         switch result {
@@ -162,6 +171,7 @@ extension ClaudeCodeClient {
         options: ClaudeCodeOptions? = nil,
         onChunk: @escaping (ResponseChunk) async -> Void
     ) async throws -> ResultMessage? {
+        warnIfDeprecatedModel(options)
         let result = try await runSinglePrompt(prompt: prompt, outputFormat: .streamJson, options: options)
 
         guard case .stream(let stream) = result else {

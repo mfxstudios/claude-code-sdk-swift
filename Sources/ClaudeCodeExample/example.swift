@@ -345,6 +345,105 @@ func collectTextExample() async throws {
     await session.end()
 }
 
+// MARK: - Example 14: Extended Thinking
+
+func extendedThinkingExample() async throws {
+    print("=== Extended Thinking Example ===\n")
+
+    let client = ClaudeCodeClient()
+
+    // Use extended thinking with a specific token budget
+    var options = ClaudeCodeOptions(
+        model: .opus4_6,
+        thinking: .enabled(budgetTokens: 10000)
+    )
+    options.maxTurns = 1
+
+    let result = try await client.ask(
+        "What is the sum of all prime numbers less than 100?",
+        options: options
+    )
+    print("Result: \(result.result ?? "No result")")
+    print("Cost: $\(String(format: "%.6f", result.totalCostUsd))")
+    print()
+}
+
+// MARK: - Example 15: Fast Mode
+
+func fastModeExample() async throws {
+    print("=== Fast Mode Example ===\n")
+
+    let client = ClaudeCodeClient()
+
+    var options = ClaudeCodeOptions(
+        model: .opus4_6,
+        speed: .fast
+    )
+    options.maxTurns = 1
+
+    let result = try await client.ask("What is 2 + 2?", options: options)
+    print("Result: \(result.result ?? "No result")")
+    print("Duration: \(result.durationMs)ms")
+    print()
+}
+
+// MARK: - Example 16: Model Constants
+
+func modelConstantsExample() async throws {
+    print("=== Model Constants Example ===\n")
+
+    // Using predefined model constants
+    print("Latest Opus: \(ClaudeModel.latestOpus.rawValue)")
+    print("Latest Sonnet: \(ClaudeModel.latestSonnet.rawValue)")
+    print("Latest Haiku: \(ClaudeModel.latestHaiku.rawValue)")
+
+    // Check deprecation
+    let oldModel = ClaudeModel(rawValue: "claude-3-opus-20240229")
+    print("Is claude-3-opus deprecated? \(oldModel.isDeprecated)")
+    print("Is opus 4.6 deprecated? \(ClaudeModel.opus4_6.isDeprecated)")
+
+    // Use string literal assignment (backwards compatible)
+    var options = ClaudeCodeOptions()
+    options.model = "claude-sonnet-4-5-20250514"
+    print("\nModel from string literal: \(options.model?.rawValue ?? "nil")")
+    print()
+}
+
+// MARK: - Example 17: Streaming with Thinking Events
+
+func streamWithThinkingExample() async throws {
+    print("=== Streaming with Thinking Example ===\n")
+
+    let client = ClaudeCodeClient()
+
+    let session = try client.createInteractiveSession(
+        configuration: InteractiveSessionConfiguration(
+            maxTurns: 1,
+            thinking: .adaptive,
+            model: .opus4_6
+        )
+    )
+
+    print("Sending prompt with adaptive thinking enabled...")
+    print()
+
+    for try await event in session.send("Explain why 0.1 + 0.2 != 0.3 in floating point.") {
+        switch event {
+        case .thinking(let thought):
+            print("[Thinking] \(thought.prefix(100))...")
+        case .text(let chunk):
+            print(chunk, terminator: "")
+        case .completed(let result):
+            print("\n\n[Completed - Cost: $\(String(format: "%.6f", result.totalCostUsd))]")
+        default:
+            break
+        }
+    }
+
+    await session.end()
+    print()
+}
+
 // MARK: - Main
 
 @main
@@ -373,10 +472,16 @@ struct ClaudeCodeExample {
 //             try await stdinExample()
 //             try await errorHandlingExample()
 
-            // Interactive Session examples (new!):
+            // Interactive Session examples:
 //             try await interactiveSessionExample()
 //             try await collectTextExample()
 //             try await interactiveChatExample()  // Interactive chat loop
+
+            // New feature examples:
+//             try await extendedThinkingExample()
+//             try await fastModeExample()
+//             try await modelConstantsExample()
+//             try await streamWithThinkingExample()
 
         } catch {
             print("Error: \(error)")

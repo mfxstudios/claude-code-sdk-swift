@@ -218,6 +218,52 @@ public struct ToolResultImageBlock: Codable, Sendable, Equatable {
     }
 }
 
+/// Thinking content in a message (extended thinking)
+public struct ThinkingContent: Codable, Sendable, Equatable {
+    public let type: String
+    public let thinking: String
+
+    public init(type: String = "thinking", thinking: String) {
+        self.type = type
+        self.thinking = thinking
+    }
+}
+
+/// Citation content in a message (source attribution)
+public struct CitationContent: Codable, Sendable, Equatable {
+    public let type: String
+    public let citedText: String
+    public let documentTitle: String?
+    public let documentIndex: Int?
+    public let startCharIndex: Int?
+    public let endCharIndex: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case citedText = "cited_text"
+        case documentTitle = "document_title"
+        case documentIndex = "document_index"
+        case startCharIndex = "start_char_index"
+        case endCharIndex = "end_char_index"
+    }
+
+    public init(
+        type: String = "citation",
+        citedText: String,
+        documentTitle: String? = nil,
+        documentIndex: Int? = nil,
+        startCharIndex: Int? = nil,
+        endCharIndex: Int? = nil
+    ) {
+        self.type = type
+        self.citedText = citedText
+        self.documentTitle = documentTitle
+        self.documentIndex = documentIndex
+        self.startCharIndex = startCharIndex
+        self.endCharIndex = endCharIndex
+    }
+}
+
 /// Tool result content in a message
 public struct ToolResultContent: Codable, Sendable, Equatable {
     public let type: String
@@ -238,11 +284,13 @@ public struct ToolResultContent: Codable, Sendable, Equatable {
     }
 }
 
-/// Content block that can be text, tool use, or tool result
+/// Content block that can be text, tool use, tool result, thinking, or citation
 public enum ContentBlock: Codable, Sendable, Equatable {
     case text(TextContent)
     case toolUse(ToolUseContent)
     case toolResult(ToolResultContent)
+    case thinking(ThinkingContent)
+    case citation(CitationContent)
     case unknown([String: AnyCodable])
 
     public init(from decoder: Decoder) throws {
@@ -265,6 +313,12 @@ public enum ContentBlock: Codable, Sendable, Equatable {
         case "tool_result":
             let content = try ToolResultContent(from: decoder)
             self = .toolResult(content)
+        case "thinking":
+            let content = try ThinkingContent(from: decoder)
+            self = .thinking(content)
+        case "citation":
+            let content = try CitationContent(from: decoder)
+            self = .citation(content)
         default:
             let dict = try [String: AnyCodable](from: decoder)
             self = .unknown(dict)
@@ -278,6 +332,10 @@ public enum ContentBlock: Codable, Sendable, Equatable {
         case .toolUse(let content):
             try content.encode(to: encoder)
         case .toolResult(let content):
+            try content.encode(to: encoder)
+        case .thinking(let content):
+            try content.encode(to: encoder)
+        case .citation(let content):
             try content.encode(to: encoder)
         case .unknown(let dict):
             try dict.encode(to: encoder)

@@ -28,6 +28,9 @@ public enum InteractiveEvent: Sendable {
 
     /// Error occurred during response
     case error(InteractiveError)
+
+    /// Thinking content from extended thinking
+    case thinking(String)
 }
 
 /// Information about a tool being used
@@ -230,6 +233,15 @@ public struct InteractiveSessionConfiguration: Sendable {
     /// Working directory for the session
     public var workingDirectory: String?
 
+    /// Extended thinking configuration
+    public var thinking: ThinkingConfiguration?
+
+    /// Speed mode (normal or fast)
+    public var speed: SpeedMode?
+
+    /// Model to use for this session
+    public var model: ClaudeModel?
+
     /// Creates a new interactive session configuration
     public init(
         systemPrompt: String? = nil,
@@ -237,7 +249,10 @@ public struct InteractiveSessionConfiguration: Sendable {
         allowedTools: [String]? = nil,
         disallowedTools: [String]? = nil,
         permissionPromptTool: PermissionPromptTool = .auto,
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        thinking: ThinkingConfiguration? = nil,
+        speed: SpeedMode? = nil,
+        model: ClaudeModel? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.maxTurns = maxTurns
@@ -245,6 +260,9 @@ public struct InteractiveSessionConfiguration: Sendable {
         self.disallowedTools = disallowedTools
         self.permissionPromptTool = permissionPromptTool
         self.workingDirectory = workingDirectory
+        self.thinking = thinking
+        self.speed = speed
+        self.model = model
     }
 
     /// Default configuration

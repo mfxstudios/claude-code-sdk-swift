@@ -35,7 +35,7 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
             useStdin: false
         )
 
-        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: nil)
+        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: nil, options: options)
     }
 
     public func runWithStdin(
@@ -54,7 +54,7 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
         arguments.insert("-p", at: 0)
 
         let stdinData = stdinContent.data(using: .utf8)
-        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: stdinData)
+        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: stdinData, options: options)
     }
 
     public func continueConversation(
@@ -72,7 +72,7 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
             useStdin: false
         )
 
-        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: nil)
+        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: nil, options: opts)
     }
 
     public func resumeConversation(
@@ -91,7 +91,7 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
             useStdin: false
         )
 
-        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: nil)
+        return try await executeCommand(arguments: arguments, outputFormat: outputFormat, stdinData: nil, options: opts)
     }
 
     public func listSessions() async throws -> [SessionInfo] {
@@ -142,6 +142,16 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
 
     // MARK: - Private Methods
 
+    /// Builds environment with beta feature headers if specified
+    private func buildEnvironmentWithBetas(options: ClaudeCodeOptions?) -> [String: String] {
+        var env = configuration.buildEnvironment()
+        if let betas = options?.betaFeatures, !betas.isEmpty {
+            let betaHeader = betas.map(\.rawValue).joined(separator: ",")
+            env["ANTHROPIC_BETA"] = betaHeader
+        }
+        return env
+    }
+
     private func buildArguments(
         prompt: String?,
         outputFormat: ClaudeCodeOutputFormat,
@@ -190,16 +200,18 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
     private func executeCommand(
         arguments: [String],
         outputFormat: ClaudeCodeOutputFormat,
-        stdinData: Data?
+        stdinData: Data?,
+        options: ClaudeCodeOptions? = nil
     ) async throws -> ClaudeCodeResult {
         let startTime = Date()
+        let environment = buildEnvironmentWithBetas(options: options)
 
         // Store command info for debugging
         let commandInfo = ExecutedCommandInfo(
             command: configuration.command,
             arguments: arguments,
             workingDirectory: configuration.workingDirectory,
-            environment: configuration.buildEnvironment(),
+            environment: environment,
             startTime: startTime
         )
 
@@ -211,13 +223,14 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
 
         switch outputFormat {
         case .streamJson:
-            return try await executeStreamingCommand(arguments: arguments, stdinData: stdinData)
+            return try await executeStreamingCommand(arguments: arguments, stdinData: stdinData, environment: environment)
 
         case .text, .json:
             return try await executeNonStreamingCommand(
                 arguments: arguments,
                 outputFormat: outputFormat,
-                stdinData: stdinData
+                stdinData: stdinData,
+                environment: environment
             )
         }
     }
@@ -225,13 +238,14 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
     private func executeNonStreamingCommand(
         arguments: [String],
         outputFormat: ClaudeCodeOutputFormat,
-        stdinData: Data?
+        stdinData: Data?,
+        environment: [String: String]
     ) async throws -> ClaudeCodeResult {
         let (stdout, stderr, exitCode) = try await executor.execute(
             command: configuration.command,
             arguments: arguments,
             workingDirectory: configuration.workingDirectory,
-            environment: configuration.buildEnvironment(),
+            environment: environment,
             stdinData: stdinData,
             timeout: nil
         )
@@ -274,13 +288,14 @@ public final class HeadlessBackend: ClaudeCodeBackend, @unchecked Sendable {
 
     private func executeStreamingCommand(
         arguments: [String],
-        stdinData: Data?
+        stdinData: Data?,
+        environment: [String: String]
     ) async throws -> ClaudeCodeResult {
         let dataStream = executor.executeStreaming(
             command: configuration.command,
             arguments: arguments,
             workingDirectory: configuration.workingDirectory,
-            environment: configuration.buildEnvironment(),
+            environment: environment,
             stdinData: stdinData
         )
 

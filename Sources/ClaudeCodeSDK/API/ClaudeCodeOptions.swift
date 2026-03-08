@@ -42,7 +42,14 @@ public struct ClaudeCodeOptions: Sendable {
     public var disallowedTools: [String]?
 
     /// Maximum number of thinking tokens for extended reasoning
-    public var maxThinkingTokens: Int?
+    @available(*, deprecated, message: "Use 'thinking' property with ThinkingConfiguration instead")
+    public var maxThinkingTokens: Int? {
+        get { _maxThinkingTokens }
+        set { _maxThinkingTokens = newValue }
+    }
+
+    // Backing storage to avoid deprecation warnings internally
+    internal var _maxThinkingTokens: Int?
 
     /// Maximum number of conversation turns
     public var maxTurns: Int?
@@ -63,7 +70,7 @@ public struct ClaudeCodeOptions: Sendable {
     public var resume: String?
 
     /// Model to use for the request
-    public var model: String?
+    public var model: ClaudeModel?
 
     /// Timeout for the operation in seconds
     public var timeout: TimeInterval?
@@ -74,29 +81,44 @@ public struct ClaudeCodeOptions: Sendable {
     /// Whether to enable verbose output
     public var verbose: Bool
 
+    /// Extended thinking configuration
+    public var thinking: ThinkingConfiguration?
+
+    /// Speed mode (normal or fast) for supported models
+    public var speed: SpeedMode?
+
+    /// Beta features to enable via API headers
+    public var betaFeatures: Set<BetaFeature>?
+
+    /// Structured output configuration
+    public var outputConfig: OutputConfig?
+
     /// Creates new options with the specified parameters
     public init(
         allowedTools: [String]? = nil,
         appendSystemPrompt: String? = nil,
         systemPrompt: String? = nil,
         disallowedTools: [String]? = nil,
-        maxThinkingTokens: Int? = nil,
         maxTurns: Int? = nil,
         mcpServers: [String: McpServerConfiguration]? = nil,
         permissionMode: PermissionMode? = nil,
         permissionPromptToolName: String? = nil,
         continueConversation: Bool? = nil,
         resume: String? = nil,
-        model: String? = nil,
+        model: ClaudeModel? = nil,
         timeout: TimeInterval? = nil,
         mcpConfigPath: String? = nil,
-        verbose: Bool = false
+        verbose: Bool = false,
+        thinking: ThinkingConfiguration? = nil,
+        speed: SpeedMode? = nil,
+        betaFeatures: Set<BetaFeature>? = nil,
+        outputConfig: OutputConfig? = nil
     ) {
         self.allowedTools = allowedTools
         self.appendSystemPrompt = appendSystemPrompt
         self.systemPrompt = systemPrompt
         self.disallowedTools = disallowedTools
-        self.maxThinkingTokens = maxThinkingTokens
+        self._maxThinkingTokens = nil
         self.maxTurns = maxTurns
         self.mcpServers = mcpServers
         self.permissionMode = permissionMode
@@ -107,6 +129,10 @@ public struct ClaudeCodeOptions: Sendable {
         self.timeout = timeout
         self.mcpConfigPath = mcpConfigPath
         self.verbose = verbose
+        self.thinking = thinking
+        self.speed = speed
+        self.betaFeatures = betaFeatures
+        self.outputConfig = outputConfig
     }
 
     /// Escapes a string for safe shell usage
@@ -144,7 +170,19 @@ public struct ClaudeCodeOptions: Sendable {
             args.append(appendSystemPrompt)
         }
 
-        if let maxThinkingTokens = maxThinkingTokens {
+        // Thinking configuration takes precedence over legacy maxThinkingTokens
+        if let thinking = thinking {
+            switch thinking {
+            case .enabled(let budgetTokens):
+                args.append("--max-thinking-tokens")
+                args.append(String(budgetTokens))
+            case .adaptive:
+                args.append("--thinking-mode")
+                args.append("adaptive")
+            case .disabled:
+                break
+            }
+        } else if let maxThinkingTokens = _maxThinkingTokens {
             args.append("--max-thinking-tokens")
             args.append(String(maxThinkingTokens))
         }
@@ -161,7 +199,7 @@ public struct ClaudeCodeOptions: Sendable {
 
         if let model = model {
             args.append("--model")
-            args.append(model)
+            args.append(model.rawValue)
         }
 
         if let mcpConfigPath = mcpConfigPath {
@@ -176,6 +214,10 @@ public struct ClaudeCodeOptions: Sendable {
         if let resume = resume {
             args.append("--resume")
             args.append(resume)
+        }
+
+        if let speed = speed, speed == .fast {
+            args.append("--fast")
         }
 
         if verbose {

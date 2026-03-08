@@ -7,6 +7,11 @@ A cross-platform Swift SDK for interacting with Claude Code CLI. Supports macOS 
 - **Modern Swift Concurrency**: Full async/await and AsyncSequence support
 - **Dual Backend Support**: Choose between Headless CLI or Agent SDK backends with auto-detection
 - **Interactive Sessions**: Multi-turn conversations with streaming responses
+- **Extended Thinking**: Configure extended and adaptive thinking with `ThinkingConfiguration`
+- **Fast Mode**: 2.5x faster output with `SpeedMode.fast` for supported models
+- **Model Constants**: Type-safe `ClaudeModel` constants for all current models (Opus 4.6, Sonnet 4.6, etc.)
+- **Structured Outputs**: JSON schema validation via `OutputConfig`
+- **Beta Features**: Enable compaction, 1M context, interleaved thinking, and more
 - **Native Session Storage**: Access Claude CLI session history from `~/.claude/projects/`
 - **Streaming Responses**: Real-time streaming with `AsyncSequence`
 - **Type-safe**: Strongly typed API with Codable message types
@@ -68,6 +73,100 @@ print(text)
 let result = try await client.ask("Explain Swift in one sentence.")
 print(result.result ?? "")
 print("Cost: $\(result.totalCostUsd)")
+```
+
+## Model Selection
+
+Use type-safe model constants or string literals:
+
+```swift
+var options = ClaudeCodeOptions()
+
+// Using model constants
+options.model = .opus4_6
+options.model = .sonnet4_5
+options.model = .latestSonnet  // alias for latest Sonnet
+
+// Using string literals (backwards compatible)
+options.model = "claude-sonnet-4-5-20250514"
+
+// Check if a model is deprecated
+let model = ClaudeModel(rawValue: "claude-3-opus-20240229")
+print(model.isDeprecated) // true
+```
+
+Available constants: `.opus4_6`, `.opus4_5`, `.opus4_1`, `.opus4`, `.sonnet4_6`, `.sonnet4_5`, `.sonnet4`, `.haiku4_5`
+
+## Extended Thinking
+
+Configure Claude's extended thinking for complex reasoning tasks:
+
+```swift
+var options = ClaudeCodeOptions()
+
+// Enabled with a specific token budget
+options.thinking = .enabled(budgetTokens: 10000)
+
+// Adaptive — Claude decides when and how much to think
+options.thinking = .adaptive
+
+// Disabled
+options.thinking = .disabled
+
+let result = try await client.ask("Solve this complex problem...", options: options)
+```
+
+Thinking events are streamed in interactive sessions:
+
+```swift
+let session = try client.createInteractiveSession(
+    configuration: InteractiveSessionConfiguration(
+        thinking: .adaptive,
+        model: .opus4_6
+    )
+)
+
+for try await event in session.send("Explain quantum computing") {
+    switch event {
+    case .thinking(let thought):
+        print("[Thinking] \(thought)")
+    case .text(let chunk):
+        print(chunk, terminator: "")
+    default:
+        break
+    }
+}
+```
+
+> **Migration note**: The `maxThinkingTokens` property is deprecated. Use `thinking: .enabled(budgetTokens: N)` instead.
+
+## Fast Mode
+
+Get 2.5x faster output for supported models (e.g., Opus 4.6):
+
+```swift
+var options = ClaudeCodeOptions()
+options.model = .opus4_6
+options.speed = .fast
+
+let result = try await client.ask("Quick question", options: options)
+```
+
+## Beta Features
+
+Enable beta API features via headers:
+
+```swift
+var options = ClaudeCodeOptions()
+options.betaFeatures = [.compaction, .extendedContext1M]
+
+// Available beta features:
+// .compaction           — Context compaction for long conversations
+// .extendedContext1M    — 1M token context window
+// .interleavedThinking  — Thinking between tool calls
+// .computerUse          — Computer use tool support
+// .searchResultsCitations — Search result citations
+// .skills               — Skills API
 ```
 
 ## Interactive Sessions
@@ -318,11 +417,13 @@ let client = try ClaudeCodeClient(configuration: config)
 var options = ClaudeCodeOptions()
 options.systemPrompt = "You are a coding assistant."
 options.maxTurns = 10
-options.maxThinkingTokens = 1000
-options.model = "claude-sonnet-4-20250514"
+options.model = .sonnet4_6
+options.thinking = .adaptive
+options.speed = .fast
 options.timeout = 60
 options.allowedTools = ["Read", "Write"]
 options.disallowedTools = ["Bash"]
+options.betaFeatures = [.compaction]
 options.verbose = true
 
 let result = try await client.ask("Help me debug this", options: options)
@@ -441,6 +542,7 @@ enum InteractiveEvent {
     case sessionStarted(SessionStartInfo)   // Session initialized
     case completed(InteractiveResult)       // Response complete
     case error(InteractiveError)            // Error occurred
+    case thinking(String)                   // Extended thinking content
 }
 ```
 

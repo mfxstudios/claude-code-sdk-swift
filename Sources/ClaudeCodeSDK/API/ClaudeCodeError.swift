@@ -44,6 +44,12 @@ public enum ClaudeCodeError: Error, Sendable {
 
     /// Process terminated with signal
     case signalTerminated(Int32)
+
+    /// A deprecated model was specified
+    case deprecatedModel(String)
+
+    /// API quota exceeded
+    case quotaExceeded(String)
 }
 
 extension ClaudeCodeError: LocalizedError {
@@ -76,6 +82,10 @@ extension ClaudeCodeError: LocalizedError {
             return "Invalid configuration: \(message)"
         case .signalTerminated(let signal):
             return "Process terminated by signal: \(signal)"
+        case .deprecatedModel(let model):
+            return "Model '\(model)' has been deprecated. Please use a current model."
+        case .quotaExceeded(let message):
+            return "API quota exceeded: \(message)"
         }
     }
 }

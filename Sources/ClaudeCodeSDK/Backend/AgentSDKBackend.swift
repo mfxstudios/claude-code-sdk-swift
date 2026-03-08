@@ -292,6 +292,10 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         var continueSession: Bool?
         var resumeSession: String?
         var mcpServers: [String: McpServerConfiguration]?
+        var thinking: ThinkingConfiguration?
+        var speed: String?
+        var betaFeatures: [String]?
+        var outputConfig: OutputConfig?
 
         enum CodingKeys: String, CodingKey {
             case model
@@ -305,6 +309,10 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
             case continueSession = "continue"
             case resumeSession = "resume"
             case mcpServers = "mcp_servers"
+            case thinking
+            case speed
+            case betaFeatures = "beta_features"
+            case outputConfig = "output_config"
         }
     }
 
@@ -312,9 +320,9 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         var wrapperOptions = WrapperOptions()
 
         if let opts = options {
-            wrapperOptions.model = opts.model
+            wrapperOptions.model = opts.model?.rawValue
             wrapperOptions.maxTurns = opts.maxTurns
-            wrapperOptions.maxThinkingTokens = opts.maxThinkingTokens
+            wrapperOptions.maxThinkingTokens = opts._maxThinkingTokens
             // System prompt handling:
             // - appendSystemPrompt uses claude_code preset with append (recommended)
             // - systemPrompt replaces the default system prompt entirely
@@ -326,6 +334,12 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
             wrapperOptions.continueSession = opts.continueConversation
             wrapperOptions.resumeSession = opts.resume
             wrapperOptions.mcpServers = opts.mcpServers
+            wrapperOptions.thinking = opts.thinking
+            wrapperOptions.speed = opts.speed?.rawValue
+            if let betas = opts.betaFeatures, !betas.isEmpty {
+                wrapperOptions.betaFeatures = betas.map(\.rawValue)
+            }
+            wrapperOptions.outputConfig = opts.outputConfig
         } else {
             wrapperOptions.disallowedTools = configuration.disallowedTools
         }

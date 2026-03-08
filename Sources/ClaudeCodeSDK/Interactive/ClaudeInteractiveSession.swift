@@ -118,6 +118,21 @@ public final class ClaudeInteractiveSession: InteractiveSessionProtocol, @unchec
             options.permissionPromptToolName = "allow-all"
         }
 
+        // Set thinking configuration
+        if let thinking = configuration.thinking {
+            options.thinking = thinking
+        }
+
+        // Set speed mode
+        if let speed = configuration.speed {
+            options.speed = speed
+        }
+
+        // Set model
+        if let model = configuration.model {
+            options.model = model
+        }
+
         // Resume existing session if we have one
         if let currentSessionId = sessionId {
             options.resume = currentSessionId
@@ -181,7 +196,10 @@ public final class ClaudeInteractiveSession: InteractiveSessionProtocol, @unchec
                             content: toolResult.contentString
                         )))
 
-                    case .unknown:
+                    case .thinking(let thinkingContent):
+                        continuation.yield(.thinking(thinkingContent.thinking))
+
+                    case .citation, .unknown:
                         break
                     }
                 }

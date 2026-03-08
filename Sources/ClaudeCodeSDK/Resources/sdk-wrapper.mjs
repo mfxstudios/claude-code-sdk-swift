@@ -67,6 +67,26 @@ function mapOptions(options) {
         sdkOptions.mcpServers = options.mcp_servers;
     }
 
+    // Extended thinking configuration
+    if (options.thinking) {
+        sdkOptions.thinking = options.thinking;
+    }
+
+    // Speed mode
+    if (options.speed) {
+        sdkOptions.speed = options.speed;
+    }
+
+    // Beta features
+    if (options.beta_features && options.beta_features.length > 0) {
+        sdkOptions.betas = options.beta_features;
+    }
+
+    // Structured output configuration
+    if (options.output_config) {
+        sdkOptions.outputConfig = options.output_config;
+    }
+
     return sdkOptions;
 }
 
