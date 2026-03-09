@@ -11,6 +11,7 @@ A cross-platform Swift SDK for interacting with Claude Code CLI. Supports macOS 
 - **Fast Mode**: 2.5x faster output with `SpeedMode.fast` for supported models
 - **Model Constants**: Type-safe `ClaudeModel` constants for all current models (Opus 4.6, Sonnet 4.6, etc.)
 - **Structured Outputs**: JSON schema validation via `OutputConfig`
+- **Per-Tool Permissions**: Fine-grained `ToolPermissionRule` with pattern support (e.g., `Bash(git *)`)
 - **Beta Features**: Enable compaction, 1M context, interleaved thinking, and more
 - **Native Session Storage**: Access Claude CLI session history from `~/.claude/projects/`
 - **Streaming Responses**: Real-time streaming with `AsyncSequence`
@@ -169,6 +170,68 @@ options.betaFeatures = [.compaction, .extendedContext1M]
 // .skills               — Skills API
 ```
 
+## Per-Tool Permissions
+
+Control which tools Claude can use with fine-grained permission rules:
+
+```swift
+var options = ClaudeCodeOptions()
+
+// Type-safe tool permission rules
+options.allowedTools = [
+    .read,                                  // Allow Read tool
+    .glob,                                  // Allow Glob tool
+    .tool("Bash", argument: "git *"),       // Allow Bash for git commands only
+    .tool("Write", argument: "/src/*"),     // Allow Write scoped to /src/
+    .bashGit,                               // Shorthand for Bash(git *)
+]
+
+options.disallowedTools = [
+    .tool("Bash"),                          // Deny all Bash usage
+    .tool("Write", argument: "/etc/*"),     // Deny writes to /etc/
+]
+
+// String literals also work (backwards compatible)
+options.allowedTools = ["Read", "Glob", "Bash(git *)"]
+```
+
+### Permission Modes
+
+```swift
+var options = ClaudeCodeOptions()
+options.permissionMode = .default           // Standard prompting
+options.permissionMode = .acceptEdits       // Auto-approve file edits
+options.permissionMode = .plan              // Plan mode — no execution
+options.permissionMode = .bypassPermissions // Bypass all checks
+```
+
+### Interactive Session Permissions
+
+```swift
+let session = try client.createInteractiveSession(
+    configuration: InteractiveSessionConfiguration(
+        allowedTools: [.read, .glob, .tool("Bash", argument: "git *")],
+        disallowedTools: [.tool("Write", argument: "/etc/*")],
+        permissionPromptTool: .deny,
+        permissionMode: .acceptEdits
+    )
+)
+```
+
+### Common Permission Rule Constants
+
+| Constant | Rule | Description |
+|----------|------|-------------|
+| `.bash` | `Bash` | Any Bash usage |
+| `.read` | `Read` | Any Read usage |
+| `.write` | `Write` | Any Write usage |
+| `.edit` | `Edit` | Any Edit usage |
+| `.glob` | `Glob` | Any Glob usage |
+| `.grep` | `Grep` | Any Grep usage |
+| `.bashGit` | `Bash(git *)` | Bash for git commands only |
+| `.bashNpm` | `Bash(npm *)` | Bash for npm commands only |
+| `.bashAny` | `Bash(*)` | Bash with any argument |
+
 ## Interactive Sessions
 
 The SDK provides an interactive session API for building chat applications and CLI tools with multi-turn conversations.
@@ -232,9 +295,10 @@ let session = try client.createInteractiveSession(
     configuration: InteractiveSessionConfiguration(
         systemPrompt: "You are a helpful coding assistant.",
         maxTurns: 5,
-        allowedTools: ["Read", "Write", "Glob"],
-        disallowedTools: ["Bash"],
-        permissionPromptTool: .deny
+        allowedTools: [.read, .write, .glob, .bashGit],
+        disallowedTools: [.tool("Bash")],
+        permissionPromptTool: .deny,
+        permissionMode: .acceptEdits
     )
 )
 ```
@@ -421,8 +485,9 @@ options.model = .sonnet4_6
 options.thinking = .adaptive
 options.speed = .fast
 options.timeout = 60
-options.allowedTools = ["Read", "Write"]
-options.disallowedTools = ["Bash"]
+options.allowedTools = [.read, .write, .bashGit]
+options.disallowedTools = [.tool("Bash")]
+options.permissionMode = .acceptEdits
 options.betaFeatures = [.compaction]
 options.verbose = true
 

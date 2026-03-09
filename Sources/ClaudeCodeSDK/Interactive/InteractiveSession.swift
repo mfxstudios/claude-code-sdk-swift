@@ -221,14 +221,26 @@ public struct InteractiveSessionConfiguration: Sendable {
     /// Maximum turns per message (0 for unlimited)
     public var maxTurns: Int
 
-    /// Tools to allow during the session
-    public var allowedTools: [String]?
+    /// Tools to allow during the session.
+    ///
+    /// Supports per-tool permission rules with patterns:
+    /// ```swift
+    /// let session = try client.createInteractiveSession(
+    ///     configuration: InteractiveSessionConfiguration(
+    ///         allowedTools: [.read, .glob, .tool("Bash", argument: "git *")]
+    ///     )
+    /// )
+    /// ```
+    public var allowedTools: [ToolPermissionRule]?
 
     /// Tools to disallow during the session
-    public var disallowedTools: [String]?
+    public var disallowedTools: [ToolPermissionRule]?
 
     /// MCP permission prompt behavior
     public var permissionPromptTool: PermissionPromptTool
+
+    /// Permission mode for the session
+    public var permissionMode: PermissionMode?
 
     /// Working directory for the session
     public var workingDirectory: String?
@@ -246,9 +258,10 @@ public struct InteractiveSessionConfiguration: Sendable {
     public init(
         systemPrompt: String? = nil,
         maxTurns: Int = 0,
-        allowedTools: [String]? = nil,
-        disallowedTools: [String]? = nil,
+        allowedTools: [ToolPermissionRule]? = nil,
+        disallowedTools: [ToolPermissionRule]? = nil,
         permissionPromptTool: PermissionPromptTool = .auto,
+        permissionMode: PermissionMode? = nil,
         workingDirectory: String? = nil,
         thinking: ThinkingConfiguration? = nil,
         speed: SpeedMode? = nil,
@@ -259,6 +272,7 @@ public struct InteractiveSessionConfiguration: Sendable {
         self.allowedTools = allowedTools
         self.disallowedTools = disallowedTools
         self.permissionPromptTool = permissionPromptTool
+        self.permissionMode = permissionMode
         self.workingDirectory = workingDirectory
         self.thinking = thinking
         self.speed = speed

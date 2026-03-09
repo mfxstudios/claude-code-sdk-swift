@@ -55,6 +55,10 @@ function mapOptions(options) {
         sdkOptions.permissionMode = options.permission_mode;
     }
 
+    if (options.permission_prompt_tool) {
+        sdkOptions.permissionPromptTool = options.permission_prompt_tool;
+    }
+
     if (options.continue) {
         sdkOptions.continue = true;
     }

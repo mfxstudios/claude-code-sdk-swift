@@ -118,6 +118,11 @@ public final class ClaudeInteractiveSession: InteractiveSessionProtocol, @unchec
             options.permissionPromptToolName = "allow-all"
         }
 
+        // Set permission mode
+        if let permissionMode = configuration.permissionMode {
+            options.permissionMode = permissionMode
+        }
+
         // Set thinking configuration
         if let thinking = configuration.thinking {
             options.thinking = thinking

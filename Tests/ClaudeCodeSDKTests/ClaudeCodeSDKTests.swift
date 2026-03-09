@@ -577,7 +577,38 @@ struct PermissionModeTests {
     func permissionModeRawValues() {
         #expect(PermissionMode.default.rawValue == "default")
         #expect(PermissionMode.acceptEdits.rawValue == "acceptEdits")
+        #expect(PermissionMode.plan.rawValue == "plan")
         #expect(PermissionMode.bypassPermissions.rawValue == "bypassPermissions")
+    }
+
+    @Test("Permission mode generates correct command args")
+    func permissionModeCommandArgs() {
+        var options = ClaudeCodeOptions()
+        options.permissionMode = .plan
+
+        let args = options.toCommandArgs()
+
+        #expect(args.contains("--permission-mode"))
+        #expect(args.contains("plan"))
+    }
+
+    @Test("Permission prompt tool name generates correct command args")
+    func permissionPromptToolNameCommandArgs() {
+        var options = ClaudeCodeOptions()
+        options.permissionPromptToolName = "deny-all"
+
+        let args = options.toCommandArgs()
+
+        #expect(args.contains("--permission-prompt-tool"))
+        #expect(args.contains("deny-all"))
+    }
+
+    @Test("Permission prompt tool name is absent when nil")
+    func permissionPromptToolNameAbsentWhenNil() {
+        let options = ClaudeCodeOptions()
+        let args = options.toCommandArgs()
+
+        #expect(!args.contains("--permission-prompt-tool"))
     }
 }
 
@@ -985,5 +1016,216 @@ struct NewOptionsTests {
         } else {
             Issue.record("Expected thinking event")
         }
+    }
+}
+
+// MARK: - Tool Permission Rule Tests
+
+@Suite("Tool Permission Rule Tests")
+struct ToolPermissionRuleTests {
+
+    @Test("Basic tool rule creates correct string")
+    func basicToolRule() {
+        let rule = ToolPermissionRule.tool("Bash")
+        #expect(rule.rule == "Bash")
+    }
+
+    @Test("Tool rule with argument creates correct pattern")
+    func toolRuleWithArgument() {
+        let rule = ToolPermissionRule.tool("Bash", argument: "git *")
+        #expect(rule.rule == "Bash(git *)")
+    }
+
+    @Test("Tool rule with path argument creates correct pattern")
+    func toolRuleWithPathArgument() {
+        let rule = ToolPermissionRule.tool("Read", argument: "/src/*")
+        #expect(rule.rule == "Read(/src/*)")
+    }
+
+    @Test("Tool rule with wildcard argument")
+    func toolRuleWithWildcardArgument() {
+        let rule = ToolPermissionRule.tool("Write", argument: "*")
+        #expect(rule.rule == "Write(*)")
+    }
+
+    @Test("String literal creates tool rule")
+    func stringLiteralToolRule() {
+        let rule: ToolPermissionRule = "Bash(npm *)"
+        #expect(rule.rule == "Bash(npm *)")
+    }
+
+    @Test("Common tool constants are correct")
+    func commonToolConstants() {
+        #expect(ToolPermissionRule.bash.rule == "Bash")
+        #expect(ToolPermissionRule.read.rule == "Read")
+        #expect(ToolPermissionRule.write.rule == "Write")
+        #expect(ToolPermissionRule.edit.rule == "Edit")
+        #expect(ToolPermissionRule.glob.rule == "Glob")
+        #expect(ToolPermissionRule.grep.rule == "Grep")
+        #expect(ToolPermissionRule.webFetch.rule == "WebFetch")
+        #expect(ToolPermissionRule.webSearch.rule == "WebSearch")
+        #expect(ToolPermissionRule.notebookEdit.rule == "NotebookEdit")
+        #expect(ToolPermissionRule.agent.rule == "Agent")
+    }
+
+    @Test("Common pattern constants are correct")
+    func commonPatternConstants() {
+        #expect(ToolPermissionRule.bashGit.rule == "Bash(git *)")
+        #expect(ToolPermissionRule.bashNpm.rule == "Bash(npm *)")
+        #expect(ToolPermissionRule.bashAny.rule == "Bash(*)")
+        #expect(ToolPermissionRule.readAny.rule == "Read(*)")
+        #expect(ToolPermissionRule.writeAny.rule == "Write(*)")
+    }
+
+    @Test("Tool rules are equatable")
+    func toolRuleEquality() {
+        let a = ToolPermissionRule.tool("Bash", argument: "git *")
+        let b: ToolPermissionRule = "Bash(git *)"
+        #expect(a == b)
+
+        let c = ToolPermissionRule.bashGit
+        #expect(a == c)
+    }
+
+    @Test("Tool rules are hashable")
+    func toolRuleHashable() {
+        let set: Set<ToolPermissionRule> = [.bash, .read, .write, .bash]
+        #expect(set.count == 3)
+    }
+
+    @Test("Tool rule encodes and decodes correctly")
+    func toolRuleCodable() throws {
+        let rule = ToolPermissionRule.tool("Bash", argument: "git *")
+        let data = try JSONEncoder().encode(rule)
+        let decoded = try JSONDecoder().decode(ToolPermissionRule.self, from: data)
+
+        #expect(decoded == rule)
+        #expect(decoded.rule == "Bash(git *)")
+    }
+
+    @Test("Tool rules in array encode as strings")
+    func toolRuleArrayCodable() throws {
+        let rules: [ToolPermissionRule] = [.bash, .read, .tool("Write", argument: "/src/*")]
+        let data = try JSONEncoder().encode(rules)
+        let decoded = try JSONDecoder().decode([ToolPermissionRule].self, from: data)
+
+        #expect(decoded.count == 3)
+        #expect(decoded[0].rule == "Bash")
+        #expect(decoded[1].rule == "Read")
+        #expect(decoded[2].rule == "Write(/src/*)")
+    }
+
+    @Test("Tool rule description matches rule string")
+    func toolRuleDescription() {
+        let rule = ToolPermissionRule.tool("Bash", argument: "git *")
+        #expect(rule.description == "Bash(git *)")
+    }
+}
+
+// MARK: - Per-Tool Permission Tests
+
+@Suite("Per-Tool Permission Tests")
+struct PerToolPermissionTests {
+
+    @Test("Allowed tools with patterns generate correct command args")
+    func allowedToolPatternsCommandArgs() {
+        var options = ClaudeCodeOptions()
+        options.allowedTools = [
+            .read,
+            .glob,
+            .tool("Bash", argument: "git *"),
+        ]
+
+        let args = options.toCommandArgs()
+
+        #expect(args.filter { $0 == "--allowedTools" }.count == 3)
+        #expect(args.contains("Read"))
+        #expect(args.contains("Glob"))
+        #expect(args.contains("Bash(git *)"))
+    }
+
+    @Test("Disallowed tools with patterns generate correct command args")
+    func disallowedToolPatternsCommandArgs() {
+        var options = ClaudeCodeOptions()
+        options.disallowedTools = [
+            .bash,
+            .tool("Write", argument: "/etc/*"),
+        ]
+
+        let args = options.toCommandArgs()
+
+        #expect(args.filter { $0 == "--disallowedTools" }.count == 2)
+        #expect(args.contains("Bash"))
+        #expect(args.contains("Write(/etc/*)"))
+    }
+
+    @Test("String literals work as tool permission rules in options")
+    func stringLiteralsInOptions() {
+        var options = ClaudeCodeOptions()
+        options.allowedTools = ["Read", "Write", "Bash(git *)"]
+
+        let args = options.toCommandArgs()
+
+        #expect(args.contains("Read"))
+        #expect(args.contains("Write"))
+        #expect(args.contains("Bash(git *)"))
+    }
+
+    @Test("Options initializer accepts tool permission rules")
+    func optionsInitWithPermissionRules() {
+        let options = ClaudeCodeOptions(
+            allowedTools: [.read, .glob, .bashGit],
+            disallowedTools: [.tool("Write", argument: "/etc/*")],
+            permissionMode: .plan
+        )
+
+        #expect(options.allowedTools?.count == 3)
+        #expect(options.disallowedTools?.count == 1)
+        #expect(options.permissionMode == .plan)
+
+        let args = options.toCommandArgs()
+        #expect(args.contains("Bash(git *)"))
+        #expect(args.contains("Write(/etc/*)"))
+        #expect(args.contains("plan"))
+    }
+
+    @Test("Interactive session configuration accepts permission rules")
+    func interactiveSessionPermissionConfig() {
+        let config = InteractiveSessionConfiguration(
+            allowedTools: [.read, .glob, .grep],
+            disallowedTools: [.bash],
+            permissionMode: .acceptEdits
+        )
+
+        #expect(config.allowedTools?.count == 3)
+        #expect(config.disallowedTools?.count == 1)
+        #expect(config.permissionMode == .acceptEdits)
+    }
+
+    @Test("Interactive session configuration with string literal tools")
+    func interactiveSessionStringLiterals() {
+        let config = InteractiveSessionConfiguration(
+            allowedTools: ["Read", "Glob", "Bash(git *)"],
+            disallowedTools: ["Write"]
+        )
+
+        #expect(config.allowedTools?.count == 3)
+        #expect(config.disallowedTools?.count == 1)
+    }
+
+    @Test("Combined permission mode and tool rules generate correct args")
+    func combinedPermissionArgs() {
+        var options = ClaudeCodeOptions()
+        options.permissionMode = .bypassPermissions
+        options.allowedTools = [.read, .write]
+        options.permissionPromptToolName = "allow-all"
+
+        let args = options.toCommandArgs()
+
+        #expect(args.contains("--permission-mode"))
+        #expect(args.contains("bypassPermissions"))
+        #expect(args.contains("--permission-prompt-tool"))
+        #expect(args.contains("allow-all"))
+        #expect(args.filter { $0 == "--allowedTools" }.count == 2)
     }
 }

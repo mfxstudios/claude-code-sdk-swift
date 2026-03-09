@@ -289,6 +289,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         var allowedTools: [String]?
         var disallowedTools: [String]?
         var permissionMode: String?
+        var permissionPromptTool: String?
         var continueSession: Bool?
         var resumeSession: String?
         var mcpServers: [String: McpServerConfiguration]?
@@ -306,6 +307,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
             case allowedTools = "allowed_tools"
             case disallowedTools = "disallowed_tools"
             case permissionMode = "permission_mode"
+            case permissionPromptTool = "permission_prompt_tool"
             case continueSession = "continue"
             case resumeSession = "resume"
             case mcpServers = "mcp_servers"
@@ -328,9 +330,10 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
             // - systemPrompt replaces the default system prompt entirely
             wrapperOptions.systemPrompt = opts.systemPrompt
             wrapperOptions.appendSystemPrompt = opts.appendSystemPrompt
-            wrapperOptions.allowedTools = opts.allowedTools
-            wrapperOptions.disallowedTools = opts.disallowedTools ?? configuration.disallowedTools
+            wrapperOptions.allowedTools = opts.allowedTools?.map(\.rule)
+            wrapperOptions.disallowedTools = opts.disallowedTools?.map(\.rule) ?? configuration.disallowedTools
             wrapperOptions.permissionMode = opts.permissionMode?.rawValue
+            wrapperOptions.permissionPromptTool = opts.permissionPromptToolName
             wrapperOptions.continueSession = opts.continueConversation
             wrapperOptions.resumeSession = opts.resume
             wrapperOptions.mcpServers = opts.mcpServers

@@ -330,12 +330,12 @@ extension ClaudeCodeClient {
     /// - Parameters:
     ///   - systemPrompt: Optional system prompt
     ///   - maxTurns: Maximum turns per message (0 for unlimited)
-    ///   - allowedTools: Tools to allow (nil for all)
+    ///   - allowedTools: Tools to allow (nil for all). Supports permission rule patterns.
     /// - Returns: A new interactive session
     public func createInteractiveSession(
         systemPrompt: String? = nil,
         maxTurns: Int = 0,
-        allowedTools: [String]? = nil
+        allowedTools: [ToolPermissionRule]? = nil
     ) throws -> ClaudeInteractiveSession {
         let config = InteractiveSessionConfiguration(
             systemPrompt: systemPrompt,

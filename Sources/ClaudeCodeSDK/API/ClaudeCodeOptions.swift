@@ -8,9 +8,16 @@
 import Foundation
 
 /// Permission mode for Claude Code execution
+///
+/// Controls how Claude handles permission prompts for tool use:
+/// - `default`: Standard permission prompting behavior
+/// - `acceptEdits`: Auto-approve file edits, prompt for other tools
+/// - `plan`: Plan mode — Claude plans but doesn't execute changes
+/// - `bypassPermissions`: Bypass all permission checks entirely
 public enum PermissionMode: String, Sendable, Codable {
     case `default` = "default"
     case acceptEdits = "acceptEdits"
+    case plan = "plan"
     case bypassPermissions = "bypassPermissions"
 }
 
@@ -29,8 +36,19 @@ public struct McpServerConfiguration: Sendable, Codable, Equatable {
 
 /// Options for Claude Code execution
 public struct ClaudeCodeOptions: Sendable {
-    /// List of tools that Claude is allowed to use
-    public var allowedTools: [String]?
+    /// List of tools that Claude is allowed to use.
+    ///
+    /// Supports per-tool permission rules with patterns:
+    /// ```swift
+    /// options.allowedTools = [
+    ///     .tool("Read"),                         // Allow Read tool
+    ///     .tool("Bash", argument: "git *"),       // Allow Bash for git commands only
+    ///     .tool("Write", argument: "/src/*"),     // Allow Write scoped to /src/
+    ///     .bashGit,                               // Shorthand for Bash(git *)
+    ///     "Grep",                                 // String literals work too
+    /// ]
+    /// ```
+    public var allowedTools: [ToolPermissionRule]?
 
     /// System prompt to append to the default system prompt
     public var appendSystemPrompt: String?
@@ -38,8 +56,16 @@ public struct ClaudeCodeOptions: Sendable {
     /// Custom system prompt to replace the default
     public var systemPrompt: String?
 
-    /// List of tools that should be disallowed
-    public var disallowedTools: [String]?
+    /// List of tools that should be disallowed.
+    ///
+    /// Supports per-tool permission rules with patterns:
+    /// ```swift
+    /// options.disallowedTools = [
+    ///     .tool("Bash"),                          // Deny all Bash usage
+    ///     .tool("Write", argument: "/etc/*"),      // Deny writes to /etc/
+    /// ]
+    /// ```
+    public var disallowedTools: [ToolPermissionRule]?
 
     /// Maximum number of thinking tokens for extended reasoning
     @available(*, deprecated, message: "Use 'thinking' property with ThinkingConfiguration instead")
@@ -95,10 +121,10 @@ public struct ClaudeCodeOptions: Sendable {
 
     /// Creates new options with the specified parameters
     public init(
-        allowedTools: [String]? = nil,
+        allowedTools: [ToolPermissionRule]? = nil,
         appendSystemPrompt: String? = nil,
         systemPrompt: String? = nil,
-        disallowedTools: [String]? = nil,
+        disallowedTools: [ToolPermissionRule]? = nil,
         maxTurns: Int? = nil,
         mcpServers: [String: McpServerConfiguration]? = nil,
         permissionMode: PermissionMode? = nil,
@@ -149,14 +175,14 @@ public struct ClaudeCodeOptions: Sendable {
         if let allowedTools = allowedTools, !allowedTools.isEmpty {
             for tool in allowedTools {
                 args.append("--allowedTools")
-                args.append(tool)
+                args.append(tool.rule)
             }
         }
 
         if let disallowedTools = disallowedTools, !disallowedTools.isEmpty {
             for tool in disallowedTools {
                 args.append("--disallowedTools")
-                args.append(tool)
+                args.append(tool.rule)
             }
         }
 
@@ -195,6 +221,11 @@ public struct ClaudeCodeOptions: Sendable {
         if let permissionMode = permissionMode {
             args.append("--permission-mode")
             args.append(permissionMode.rawValue)
+        }
+
+        if let permissionPromptToolName = permissionPromptToolName {
+            args.append("--permission-prompt-tool")
+            args.append(permissionPromptToolName)
         }
 
         if let model = model {
