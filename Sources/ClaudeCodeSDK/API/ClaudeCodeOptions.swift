@@ -119,6 +119,18 @@ public struct ClaudeCodeOptions: Sendable {
     /// Structured output configuration
     public var outputConfig: OutputConfig?
 
+    /// Whether interactive mode is enabled (bidirectional IPC for user questions and tool permissions).
+    /// Automatically set to `true` when `userQuestionHandler` or `toolPermissionHandler` is provided.
+    public var interactive: Bool
+
+    /// Handler called when Claude asks the user clarifying questions via AskUserQuestion.
+    /// Only used with the Agent SDK backend.
+    public var userQuestionHandler: UserQuestionHandler?
+
+    /// Handler called when Claude requests permission to use a tool.
+    /// Only used with the Agent SDK backend.
+    public var toolPermissionHandler: ToolPermissionHandler?
+
     /// Creates new options with the specified parameters
     public init(
         allowedTools: [ToolPermissionRule]? = nil,
@@ -138,7 +150,10 @@ public struct ClaudeCodeOptions: Sendable {
         thinking: ThinkingConfiguration? = nil,
         speed: SpeedMode? = nil,
         betaFeatures: Set<BetaFeature>? = nil,
-        outputConfig: OutputConfig? = nil
+        outputConfig: OutputConfig? = nil,
+        interactive: Bool = false,
+        userQuestionHandler: UserQuestionHandler? = nil,
+        toolPermissionHandler: ToolPermissionHandler? = nil
     ) {
         self.allowedTools = allowedTools
         self.appendSystemPrompt = appendSystemPrompt
@@ -159,6 +174,9 @@ public struct ClaudeCodeOptions: Sendable {
         self.speed = speed
         self.betaFeatures = betaFeatures
         self.outputConfig = outputConfig
+        self.interactive = interactive
+        self.userQuestionHandler = userQuestionHandler
+        self.toolPermissionHandler = toolPermissionHandler
     }
 
     /// Escapes a string for safe shell usage

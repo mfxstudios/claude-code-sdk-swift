@@ -7,9 +7,75 @@
  * 1. Receiving configuration via command-line arguments (JSON)
  * 2. Executing queries through the SDK
  * 3. Streaming results as JSONL to stdout
+ * 4. Supporting bidirectional IPC for user questions and tool permissions
  */
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createInterface } from 'readline';
+
+// MARK: - Bidirectional IPC for interactive mode
+
+/** Map of pending request IDs to their resolve functions */
+const pendingRequests = new Map();
+
+/** Counter for generating unique request IDs */
+let requestIdCounter = 0;
+
+/** Readline interface for receiving responses from Swift via stdin */
+let stdinReader = null;
+
+/**
+ * Initializes the stdin reader for receiving responses from Swift.
+ * Only called when interactive mode is enabled.
+ */
+function initStdinReader() {
+    if (stdinReader) return;
+
+    stdinReader = createInterface({
+        input: process.stdin,
+        terminal: false,
+    });
+
+    stdinReader.on('line', (line) => {
+        try {
+            const response = JSON.parse(line);
+            const requestId = response.request_id;
+
+            if (requestId && pendingRequests.has(requestId)) {
+                const resolve = pendingRequests.get(requestId);
+                pendingRequests.delete(requestId);
+                resolve(response);
+            } else if (process.env.DEBUG || process.env.CLAUDE_DEBUG) {
+                console.error('[sdk-wrapper] Unknown or expired request_id:', requestId);
+            }
+        } catch (error) {
+            if (process.env.DEBUG || process.env.CLAUDE_DEBUG) {
+                console.error('[sdk-wrapper] Failed to parse stdin response:', error.message);
+            }
+        }
+    });
+}
+
+/**
+ * Sends an input request to Swift via stdout and waits for the response via stdin.
+ *
+ * @param {string} inputType - Either 'user_question' or 'tool_permission'
+ * @param {object} payload - The request payload
+ * @returns {Promise<object>} The response from Swift
+ */
+function sendInputRequest(inputType, payload) {
+    return new Promise((resolve) => {
+        const requestId = `req_${++requestIdCounter}`;
+        pendingRequests.set(requestId, resolve);
+
+        outputMessage({
+            type: 'input_request',
+            request_id: requestId,
+            input_type: inputType,
+            payload,
+        });
+    });
+}
 
 /**
  * Maps Swift-style configuration to SDK options
@@ -91,6 +157,36 @@ function mapOptions(options) {
         sdkOptions.outputConfig = options.output_config;
     }
 
+    // Interactive mode: set up canUseTool callback for user questions and permissions
+    if (options.interactive) {
+        initStdinReader();
+
+        sdkOptions.canUseTool = async (toolName, input) => {
+            if (toolName === 'AskUserQuestion') {
+                // Claude is asking the user clarifying questions
+                const response = await sendInputRequest('user_question', {
+                    questions: input.questions || [],
+                });
+                // Return the answers to be injected as the tool result
+                return { result: response.answers || {} };
+            }
+
+            // For all other tools, request permission from Swift
+            const response = await sendInputRequest('tool_permission', {
+                tool_name: toolName,
+                input: input || {},
+            });
+
+            if (response.decision === 'allow') {
+                return undefined; // undefined = allow tool use
+            }
+            return {
+                denied: true,
+                reason: response.reason || 'Denied by user',
+            };
+        };
+    }
+
     return sdkOptions;
 }
 
@@ -138,6 +234,9 @@ async function main() {
         if (sdkOptions.resume) {
             console.error('[sdk-wrapper] Resuming session:', sdkOptions.resume);
         }
+        if (options.interactive) {
+            console.error('[sdk-wrapper] Interactive mode enabled');
+        }
     }
 
     let toolsUsed = false;
@@ -172,6 +271,11 @@ async function main() {
             num_turns: 0,
         });
         process.exit(1);
+    }
+
+    // Clean up stdin reader if it was initialized
+    if (stdinReader) {
+        stdinReader.close();
     }
 
     // Smart exit: immediate if no tools used, delayed if tools were used

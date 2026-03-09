@@ -254,6 +254,32 @@ public struct InteractiveSessionConfiguration: Sendable {
     /// Model to use for this session
     public var model: ClaudeModel?
 
+    /// Handler called when Claude asks the user clarifying questions via AskUserQuestion.
+    ///
+    /// When set, interactive mode is automatically enabled and the SDK will call this handler
+    /// whenever Claude needs clarifying input from the user. The handler receives an array of
+    /// questions and should return a dictionary mapping question text to the selected answer.
+    ///
+    /// ```swift
+    /// let config = InteractiveSessionConfiguration(
+    ///     userQuestionHandler: { questions in
+    ///         var answers: [String: String] = [:]
+    ///         for q in questions {
+    ///             // Present to user and collect answer
+    ///             answers[q.question] = selectedLabel
+    ///         }
+    ///         return answers
+    ///     }
+    /// )
+    /// ```
+    public var userQuestionHandler: UserQuestionHandler?
+
+    /// Handler called when Claude requests permission to use a tool.
+    ///
+    /// When set, interactive mode is automatically enabled and the SDK will call this handler
+    /// whenever Claude wants to use a tool. Return `.allow` or `.deny` with an optional reason.
+    public var toolPermissionHandler: ToolPermissionHandler?
+
     /// Creates a new interactive session configuration
     public init(
         systemPrompt: String? = nil,
@@ -265,7 +291,9 @@ public struct InteractiveSessionConfiguration: Sendable {
         workingDirectory: String? = nil,
         thinking: ThinkingConfiguration? = nil,
         speed: SpeedMode? = nil,
-        model: ClaudeModel? = nil
+        model: ClaudeModel? = nil,
+        userQuestionHandler: UserQuestionHandler? = nil,
+        toolPermissionHandler: ToolPermissionHandler? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.maxTurns = maxTurns
@@ -277,6 +305,8 @@ public struct InteractiveSessionConfiguration: Sendable {
         self.thinking = thinking
         self.speed = speed
         self.model = model
+        self.userQuestionHandler = userQuestionHandler
+        self.toolPermissionHandler = toolPermissionHandler
     }
 
     /// Default configuration

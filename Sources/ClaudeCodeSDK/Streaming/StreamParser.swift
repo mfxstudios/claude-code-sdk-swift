@@ -57,6 +57,10 @@ public struct StreamParser: Sendable {
             let message = try decoder.decode(ResultMessage.self, from: data)
             return .result(message)
 
+        case "input_request":
+            let message = try decoder.decode(InputRequest.self, from: data)
+            return .inputRequest(message)
+
         default:
             // Unknown type, skip it
             return nil

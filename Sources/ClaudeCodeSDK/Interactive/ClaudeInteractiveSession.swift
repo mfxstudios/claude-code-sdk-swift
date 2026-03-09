@@ -138,6 +138,13 @@ public final class ClaudeInteractiveSession: InteractiveSessionProtocol, @unchec
             options.model = model
         }
 
+        // Set interactive mode handlers
+        if configuration.userQuestionHandler != nil || configuration.toolPermissionHandler != nil {
+            options.interactive = true
+            options.userQuestionHandler = configuration.userQuestionHandler
+            options.toolPermissionHandler = configuration.toolPermissionHandler
+        }
+
         // Resume existing session if we have one
         if let currentSessionId = sessionId {
             options.resume = currentSessionId
@@ -224,6 +231,12 @@ public final class ClaudeInteractiveSession: InteractiveSessionProtocol, @unchec
 
                 // Emit completion
                 continuation.yield(.completed(InteractiveResult(from: resultMsg)))
+
+            case .inputRequest:
+                // Input requests are handled internally by the AgentSDKBackend
+                // when interactive mode is enabled. They should not reach here,
+                // but if they do, skip them.
+                break
             }
         }
 

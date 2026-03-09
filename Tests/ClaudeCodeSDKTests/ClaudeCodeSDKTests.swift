@@ -1229,3 +1229,380 @@ struct PerToolPermissionTests {
         #expect(args.filter { $0 == "--allowedTools" }.count == 2)
     }
 }
+
+// MARK: - User Question and Tool Permission Tests
+
+@Suite("UserQuestion Types Tests")
+struct UserQuestionTypesTests {
+    @Test("UserQuestion encodes and decodes correctly")
+    func userQuestionCodable() throws {
+        let question = UserQuestion(
+            question: "Which framework?",
+            options: [
+                UserQuestionOption(label: "SwiftUI", description: "Apple's declarative framework"),
+                UserQuestionOption(label: "UIKit", description: "Apple's imperative framework"),
+            ],
+            multiSelect: false
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(question)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(UserQuestion.self, from: data)
+
+        #expect(decoded.question == "Which framework?")
+        #expect(decoded.options.count == 2)
+        #expect(decoded.options[0].label == "SwiftUI")
+        #expect(decoded.options[1].description == "Apple's imperative framework")
+        #expect(decoded.multiSelect == false)
+    }
+
+    @Test("UserQuestion uses snake_case for multiSelect")
+    func userQuestionSnakeCase() throws {
+        let question = UserQuestion(
+            question: "Pick tools",
+            options: [UserQuestionOption(label: "A", description: "Opt A")],
+            multiSelect: true
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(question)
+        let json = String(data: data, encoding: .utf8)!
+
+        #expect(json.contains("multi_select"))
+        #expect(!json.contains("multiSelect"))
+    }
+
+    @Test("UserQuestionRequest holds array of questions")
+    func userQuestionRequest() throws {
+        let request = UserQuestionRequest(questions: [
+            UserQuestion(
+                question: "Q1?",
+                options: [UserQuestionOption(label: "Yes", description: "Affirmative")],
+                multiSelect: false
+            ),
+            UserQuestion(
+                question: "Q2?",
+                options: [UserQuestionOption(label: "No", description: "Negative")],
+                multiSelect: true
+            ),
+        ])
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(request)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(UserQuestionRequest.self, from: data)
+
+        #expect(decoded.questions.count == 2)
+        #expect(decoded.questions[0].question == "Q1?")
+        #expect(decoded.questions[1].multiSelect == true)
+    }
+
+    @Test("UserQuestionResponse encodes with correct keys")
+    func userQuestionResponse() throws {
+        let response = UserQuestionResponse(
+            requestId: "req_42",
+            answers: ["Which framework?" : "SwiftUI"]
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(response)
+        let json = String(data: data, encoding: .utf8)!
+
+        #expect(json.contains("request_id"))
+        #expect(json.contains("req_42"))
+        #expect(json.contains("input_response"))
+        #expect(json.contains("SwiftUI"))
+    }
+
+    @Test("UserQuestionOption equality")
+    func userQuestionOptionEquality() {
+        let a = UserQuestionOption(label: "X", description: "desc")
+        let b = UserQuestionOption(label: "X", description: "desc")
+        let c = UserQuestionOption(label: "Y", description: "desc")
+
+        #expect(a == b)
+        #expect(a != c)
+    }
+}
+
+@Suite("ToolPermission Types Tests")
+struct ToolPermissionTypesTests {
+    @Test("ToolPermissionRequest encodes with snake_case")
+    func toolPermissionRequestEncoding() throws {
+        let request = ToolPermissionRequest(
+            toolName: "Bash",
+            input: ["command": AnyCodable("ls -la")]
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(request)
+        let json = String(data: data, encoding: .utf8)!
+
+        #expect(json.contains("tool_name"))
+        #expect(json.contains("Bash"))
+    }
+
+    @Test("ToolPermissionRequest decodes correctly")
+    func toolPermissionRequestDecoding() throws {
+        let json = """
+        {"tool_name":"Write","input":{"file_path":"/tmp/test.txt","content":"hello"}}
+        """
+
+        let decoder = JSONDecoder()
+        let request = try decoder.decode(ToolPermissionRequest.self, from: json.data(using: .utf8)!)
+
+        #expect(request.toolName == "Write")
+        #expect(request.input.count == 2)
+    }
+
+    @Test("ToolPermissionDecision raw values")
+    func toolPermissionDecisionRawValues() {
+        #expect(ToolPermissionDecision.allow.rawValue == "allow")
+        #expect(ToolPermissionDecision.deny.rawValue == "deny")
+    }
+
+    @Test("ToolPermissionResponse encodes correctly")
+    func toolPermissionResponseEncoding() throws {
+        let response = ToolPermissionResponse(
+            requestId: "req_7",
+            decision: .deny,
+            reason: "Not allowed in sandbox"
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(response)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(ToolPermissionResponse.self, from: data)
+
+        #expect(decoded.requestId == "req_7")
+        #expect(decoded.decision == .deny)
+        #expect(decoded.reason == "Not allowed in sandbox")
+        #expect(decoded.type == "input_response")
+    }
+
+    @Test("ToolPermissionResponse with nil reason")
+    func toolPermissionResponseNilReason() throws {
+        let response = ToolPermissionResponse(
+            requestId: "req_8",
+            decision: .allow
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(response)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(ToolPermissionResponse.self, from: data)
+
+        #expect(decoded.decision == .allow)
+        #expect(decoded.reason == nil)
+    }
+
+    @Test("ToolPermissionRequest equality")
+    func toolPermissionRequestEquality() {
+        let a = ToolPermissionRequest(toolName: "Bash", input: ["cmd": AnyCodable("echo hi")])
+        let b = ToolPermissionRequest(toolName: "Bash", input: ["cmd": AnyCodable("echo hi")])
+        let c = ToolPermissionRequest(toolName: "Read", input: [:])
+
+        #expect(a == b)
+        #expect(a != c)
+    }
+}
+
+@Suite("InputRequest Tests")
+struct InputRequestTests {
+    @Test("InputRequest decodes user_question type")
+    func inputRequestUserQuestion() throws {
+        let json = """
+        {
+            "type": "input_request",
+            "request_id": "req_1",
+            "input_type": "user_question",
+            "payload": {
+                "questions": [
+                    {
+                        "question": "Which DB?",
+                        "options": [
+                            {"label": "SQLite", "description": "Local DB"},
+                            {"label": "Postgres", "description": "Server DB"}
+                        ],
+                        "multi_select": false
+                    }
+                ]
+            }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        let request = try decoder.decode(InputRequest.self, from: json.data(using: .utf8)!)
+
+        #expect(request.type == "input_request")
+        #expect(request.requestId == "req_1")
+        #expect(request.inputType == "user_question")
+
+        if case .userQuestion(let uq) = request.payload {
+            #expect(uq.questions.count == 1)
+            #expect(uq.questions[0].question == "Which DB?")
+            #expect(uq.questions[0].options.count == 2)
+        } else {
+            Issue.record("Expected userQuestion payload")
+        }
+    }
+
+    @Test("InputRequest decodes tool_permission type")
+    func inputRequestToolPermission() throws {
+        let json = """
+        {
+            "type": "input_request",
+            "request_id": "req_2",
+            "input_type": "tool_permission",
+            "payload": {
+                "tool_name": "Bash",
+                "input": {"command": "rm -rf /"}
+            }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        let request = try decoder.decode(InputRequest.self, from: json.data(using: .utf8)!)
+
+        #expect(request.inputType == "tool_permission")
+
+        if case .toolPermission(let tp) = request.payload {
+            #expect(tp.toolName == "Bash")
+        } else {
+            Issue.record("Expected toolPermission payload")
+        }
+    }
+
+    @Test("InputRequest encodes with correct keys")
+    func inputRequestEncoding() throws {
+        let request = InputRequest(
+            type: "input_request",
+            requestId: "req_99",
+            inputType: "user_question",
+            payload: .userQuestion(UserQuestionRequest(questions: []))
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(request)
+        let json = String(data: data, encoding: .utf8)!
+
+        #expect(json.contains("request_id"))
+        #expect(json.contains("input_type"))
+        #expect(json.contains("req_99"))
+    }
+}
+
+@Suite("StreamParser InputRequest Tests")
+struct StreamParserInputRequestTests {
+    @Test("StreamParser parses input_request lines")
+    func parseInputRequestLine() throws {
+        let parser = StreamParser()
+        let line = """
+        {"type":"input_request","request_id":"req_5","input_type":"user_question","payload":{"questions":[{"question":"Pick one","options":[{"label":"A","description":"Option A"}],"multi_select":false}]}}
+        """
+
+        let chunk = try parser.parseLine(line)
+        #expect(chunk != nil)
+
+        if case .inputRequest(let request) = chunk {
+            #expect(request.requestId == "req_5")
+            #expect(request.inputType == "user_question")
+        } else {
+            Issue.record("Expected inputRequest chunk")
+        }
+    }
+
+    @Test("StreamParser parses tool_permission input_request")
+    func parseToolPermissionLine() throws {
+        let parser = StreamParser()
+        let line = """
+        {"type":"input_request","request_id":"req_6","input_type":"tool_permission","payload":{"tool_name":"Write","input":{"file_path":"/test"}}}
+        """
+
+        let chunk = try parser.parseLine(line)
+        #expect(chunk != nil)
+
+        if case .inputRequest(let request) = chunk {
+            #expect(request.requestId == "req_6")
+            if case .toolPermission(let tp) = request.payload {
+                #expect(tp.toolName == "Write")
+            } else {
+                Issue.record("Expected toolPermission payload")
+            }
+        } else {
+            Issue.record("Expected inputRequest chunk")
+        }
+    }
+}
+
+@Suite("ResponseChunk InputRequest Tests")
+struct ResponseChunkInputRequestTests {
+    @Test("ResponseChunk.inputRequest has empty sessionId")
+    func inputRequestSessionId() {
+        let request = InputRequest(
+            type: "input_request",
+            requestId: "req_1",
+            inputType: "user_question",
+            payload: .userQuestion(UserQuestionRequest(questions: []))
+        )
+
+        let chunk = ResponseChunk.inputRequest(request)
+        #expect(chunk.sessionId == "")
+    }
+}
+
+@Suite("ProcessStdinWriter Tests")
+struct ProcessStdinWriterTests {
+    @Test("ProcessStdinWriter write and close are safe to call")
+    func writeAndClose() {
+        // ProcessStdinWriter should be safe to create, write to (no-op without handle), and close
+        let writer = ProcessStdinWriter()
+        writer.write(Data("test".utf8))
+        writer.writeLine("test line")
+        writer.close()
+        // Should not crash even after close
+        writer.write(Data("after close".utf8))
+        writer.close()
+    }
+}
+
+@Suite("Interactive Session Handler Tests")
+struct InteractiveSessionHandlerTests {
+    @Test("InteractiveSessionConfiguration stores handlers")
+    func configurationWithHandlers() {
+        let config = InteractiveSessionConfiguration(
+            userQuestionHandler: { _ in [:] },
+            toolPermissionHandler: { _ in (.allow, nil) }
+        )
+
+        #expect(config.userQuestionHandler != nil)
+        #expect(config.toolPermissionHandler != nil)
+    }
+
+    @Test("InteractiveSessionConfiguration default has nil handlers")
+    func defaultConfigurationNoHandlers() {
+        let config = InteractiveSessionConfiguration.default
+
+        #expect(config.userQuestionHandler == nil)
+        #expect(config.toolPermissionHandler == nil)
+    }
+
+    @Test("ClaudeCodeOptions interactive mode defaults to false")
+    func optionsInteractiveDefault() {
+        let options = ClaudeCodeOptions()
+        #expect(options.interactive == false)
+        #expect(options.userQuestionHandler == nil)
+        #expect(options.toolPermissionHandler == nil)
+    }
+
+    @Test("ClaudeCodeOptions interactive mode can be set")
+    func optionsInteractiveSet() {
+        var options = ClaudeCodeOptions()
+        options.interactive = true
+        options.userQuestionHandler = { _ in ["q": "a"] }
+
+        #expect(options.interactive == true)
+        #expect(options.userQuestionHandler != nil)
+    }
+}

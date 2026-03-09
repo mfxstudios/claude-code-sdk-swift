@@ -52,7 +52,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         options: ClaudeCodeOptions?
     ) async throws -> ClaudeCodeResult {
         let config = buildWrapperConfig(prompt: prompt, options: options)
-        return try await executeWrapper(config: config, outputFormat: outputFormat)
+        return try await executeWrapper(config: config, outputFormat: outputFormat, options: options)
     }
 
     public func runWithStdin(
@@ -62,7 +62,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
     ) async throws -> ClaudeCodeResult {
         // For Agent SDK, stdin content is treated as the prompt
         let config = buildWrapperConfig(prompt: stdinContent, options: options)
-        return try await executeWrapper(config: config, outputFormat: outputFormat)
+        return try await executeWrapper(config: config, outputFormat: outputFormat, options: options)
     }
 
     public func continueConversation(
@@ -74,7 +74,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         opts.continueConversation = true
 
         let config = buildWrapperConfig(prompt: prompt ?? "", options: opts)
-        return try await executeWrapper(config: config, outputFormat: outputFormat)
+        return try await executeWrapper(config: config, outputFormat: outputFormat, options: opts)
     }
 
     public func resumeConversation(
@@ -87,7 +87,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         opts.resume = sessionId
 
         let config = buildWrapperConfig(prompt: prompt ?? "", options: opts)
-        return try await executeWrapper(config: config, outputFormat: outputFormat)
+        return try await executeWrapper(config: config, outputFormat: outputFormat, options: opts)
     }
 
     public func listSessions() async throws -> [SessionInfo] {
@@ -297,6 +297,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         var speed: String?
         var betaFeatures: [String]?
         var outputConfig: OutputConfig?
+        var interactive: Bool?
 
         enum CodingKeys: String, CodingKey {
             case model
@@ -315,6 +316,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
             case speed
             case betaFeatures = "beta_features"
             case outputConfig = "output_config"
+            case interactive
         }
     }
 
@@ -343,6 +345,9 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
                 wrapperOptions.betaFeatures = betas.map(\.rawValue)
             }
             wrapperOptions.outputConfig = opts.outputConfig
+            if opts.interactive {
+                wrapperOptions.interactive = true
+            }
         } else {
             wrapperOptions.disallowedTools = configuration.disallowedTools
         }
@@ -352,7 +357,8 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
 
     private func executeWrapper(
         config: WrapperConfig,
-        outputFormat: ClaudeCodeOutputFormat
+        outputFormat: ClaudeCodeOutputFormat,
+        options: ClaudeCodeOptions? = nil
     ) async throws -> ClaudeCodeResult {
         let startTime = Date()
 
@@ -384,7 +390,7 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
 
         switch outputFormat {
         case .streamJson:
-            return try await executeStreamingWrapper(arguments: arguments)
+            return try await executeStreamingWrapper(arguments: arguments, options: options)
 
         case .text, .json:
             return try await executeNonStreamingWrapper(arguments: arguments, outputFormat: outputFormat)
@@ -467,8 +473,18 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
     }
 
     private func executeStreamingWrapper(
-        arguments: [String]
+        arguments: [String],
+        options: ClaudeCodeOptions? = nil
     ) async throws -> ClaudeCodeResult {
+        let isInteractive = options?.interactive ?? false
+
+        if isInteractive {
+            return try await executeBidirectionalStreamingWrapper(
+                arguments: arguments,
+                options: options
+            )
+        }
+
         let dataStream = executor.executeStreaming(
             command: nodeExecutable,
             arguments: arguments,
@@ -484,5 +500,122 @@ public final class AgentSDKBackend: ClaudeCodeBackend, @unchecked Sendable {
         }
 
         return .stream(stream)
+    }
+
+    private func executeBidirectionalStreamingWrapper(
+        arguments: [String],
+        options: ClaudeCodeOptions?
+    ) async throws -> ClaudeCodeResult {
+        let (dataStream, stdinWriter) = executor.executeBidirectionalStreaming(
+            command: nodeExecutable,
+            arguments: arguments,
+            workingDirectory: configuration.workingDirectory,
+            environment: buildEnvironmentWithNodePath(),
+            stdinData: nil
+        )
+
+        let chunkStream = parser.parseStream(dataStream)
+        let userQuestionHandler = options?.userQuestionHandler
+        let toolPermissionHandler = options?.toolPermissionHandler
+        let encoder = JSONEncoder()
+
+        // Wrap the stream to intercept input_request chunks
+        let filteredStream = AsyncThrowingStream<ResponseChunk, any Swift.Error> { continuation in
+            Task {
+                do {
+                    for try await chunk in chunkStream {
+                        switch chunk {
+                        case .inputRequest(let request):
+                            // Handle input requests internally
+                            Task {
+                                await self.handleInputRequest(
+                                    request,
+                                    stdinWriter: stdinWriter,
+                                    userQuestionHandler: userQuestionHandler,
+                                    toolPermissionHandler: toolPermissionHandler,
+                                    encoder: encoder
+                                )
+                            }
+
+                        default:
+                            // Pass through all other chunks
+                            continuation.yield(chunk)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+
+        let stream = ClaudeCodeStream {
+            filteredStream
+        }
+
+        return .stream(stream)
+    }
+
+    private func handleInputRequest(
+        _ request: InputRequest,
+        stdinWriter: ProcessStdinWriter,
+        userQuestionHandler: UserQuestionHandler?,
+        toolPermissionHandler: ToolPermissionHandler?,
+        encoder: JSONEncoder
+    ) async {
+        switch request.inputType {
+        case "user_question":
+            if case .userQuestion(let questionRequest) = request.payload {
+                let answers: [String: String]
+                if let handler = userQuestionHandler {
+                    answers = await handler(questionRequest.questions)
+                } else {
+                    // No handler — auto-select first option for each question
+                    var autoAnswers: [String: String] = [:]
+                    for q in questionRequest.questions {
+                        autoAnswers[q.question] = q.options.first?.label ?? ""
+                    }
+                    answers = autoAnswers
+                }
+
+                let response = UserQuestionResponse(
+                    requestId: request.requestId,
+                    answers: answers
+                )
+
+                if let data = try? encoder.encode(response),
+                   let json = String(data: data, encoding: .utf8) {
+                    stdinWriter.writeLine(json)
+                }
+            }
+
+        case "tool_permission":
+            if case .toolPermission(let permissionRequest) = request.payload {
+                let decision: ToolPermissionDecision
+                let reason: String?
+
+                if let handler = toolPermissionHandler {
+                    (decision, reason) = await handler(permissionRequest)
+                } else {
+                    // No handler — allow by default
+                    decision = .allow
+                    reason = nil
+                }
+
+                let response = ToolPermissionResponse(
+                    requestId: request.requestId,
+                    decision: decision,
+                    reason: reason
+                )
+
+                if let data = try? encoder.encode(response),
+                   let json = String(data: data, encoding: .utf8) {
+                    stdinWriter.writeLine(json)
+                }
+            }
+
+        default:
+            break
+        }
     }
 }

@@ -344,4 +344,42 @@ extension ClaudeCodeClient {
         )
         return try createInteractiveSession(configuration: config)
     }
+
+    /// Creates a new interactive session with question handling support
+    ///
+    /// When Claude asks clarifying questions during execution (via AskUserQuestion),
+    /// the `onUserQuestion` handler is called. Your app can present the questions
+    /// to the user and return their answers.
+    ///
+    /// ```swift
+    /// let session = try client.createInteractiveSession(
+    ///     onUserQuestion: { questions in
+    ///         var answers: [String: String] = [:]
+    ///         for q in questions {
+    ///             // Show question UI, collect answer
+    ///             answers[q.question] = selectedLabel
+    ///         }
+    ///         return answers
+    ///     }
+    /// )
+    /// let result = try await session.sendAndWait("Help me set up my project")
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - systemPrompt: Optional system prompt
+    ///   - onUserQuestion: Handler called when Claude asks clarifying questions
+    ///   - onToolPermission: Handler called when Claude requests tool permission
+    /// - Returns: A new interactive session with question support
+    public func createInteractiveSession(
+        systemPrompt: String? = nil,
+        onUserQuestion: UserQuestionHandler? = nil,
+        onToolPermission: ToolPermissionHandler? = nil
+    ) throws -> ClaudeInteractiveSession {
+        let config = InteractiveSessionConfiguration(
+            systemPrompt: systemPrompt,
+            userQuestionHandler: onUserQuestion,
+            toolPermissionHandler: onToolPermission
+        )
+        return try createInteractiveSession(configuration: config)
+    }
 }

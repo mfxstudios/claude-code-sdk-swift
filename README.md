@@ -232,6 +232,64 @@ let session = try client.createInteractiveSession(
 | `.bashNpm` | `Bash(npm *)` | Bash for npm commands only |
 | `.bashAny` | `Bash(*)` | Bash with any argument |
 
+## User Questions & Tool Permissions (Interactive)
+
+When Claude needs clarifying input from the user (via the `AskUserQuestion` tool) or requests permission to use a tool, the SDK supports bidirectional communication through handler callbacks. This is available with the Agent SDK backend.
+
+### Handling User Questions
+
+```swift
+let session = try client.createInteractiveSession(
+    onUserQuestion: { questions in
+        var answers: [String: String] = [:]
+        for q in questions {
+            print("Claude asks: \(q.question)")
+            for (i, opt) in q.options.enumerated() {
+                print("  \(i + 1). \(opt.label) — \(opt.description)")
+            }
+            // Collect user's choice and map it
+            answers[q.question] = q.options.first?.label ?? ""
+        }
+        return answers
+    }
+)
+
+let result = try await session.sendAndWait("Help me set up my project")
+```
+
+### Handling Tool Permission Requests
+
+```swift
+let session = try client.createInteractiveSession(
+    onToolPermission: { request in
+        print("Claude wants to use: \(request.toolName)")
+        if request.toolName == "Bash" {
+            return (.deny, "Bash not allowed in this context")
+        }
+        return (.allow, nil)
+    }
+)
+```
+
+### Using Configuration Directly
+
+```swift
+let config = InteractiveSessionConfiguration(
+    systemPrompt: "You are a helpful assistant",
+    userQuestionHandler: { questions in
+        // Present questions to your app's UI
+        return collectUserAnswers(questions)
+    },
+    toolPermissionHandler: { request in
+        // Check against your app's security policy
+        return (.allow, nil)
+    }
+)
+let session = try client.createInteractiveSession(configuration: config)
+```
+
+> **Note:** User question and tool permission handlers are only supported with the Agent SDK backend. The headless CLI backend does not support mid-execution callbacks.
+
 ## Interactive Sessions
 
 The SDK provides an interactive session API for building chat applications and CLI tools with multi-turn conversations.

@@ -66,6 +66,9 @@ func streamingExample() async throws {
 
         case .user:
             break
+
+        case .inputRequest:
+            break
         }
     }
 

@@ -13,6 +13,7 @@ public enum ResponseChunk: Sendable {
     case user(UserMessage)
     case assistant(AssistantMessage)
     case result(ResultMessage)
+    case inputRequest(InputRequest)
 
     /// The session ID from this chunk
     public var sessionId: String {
@@ -21,6 +22,7 @@ public enum ResponseChunk: Sendable {
         case .user(let msg): return msg.sessionId
         case .assistant(let msg): return msg.sessionId
         case .result(let msg): return msg.sessionId
+        case .inputRequest: return ""
         }
     }
 }
