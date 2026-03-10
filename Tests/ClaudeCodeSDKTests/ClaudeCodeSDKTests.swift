@@ -1606,3 +1606,196 @@ struct InteractiveSessionHandlerTests {
         #expect(options.userQuestionHandler != nil)
     }
 }
+
+// MARK: - RawContentBlock Codable Fix Tests
+
+@Suite("RawContentBlock Codable Tests")
+struct RawContentBlockCodableTests {
+    @Test("RawContentBlock decodes text content block from JSON object")
+    func decodeTextBlock() throws {
+        let json = """
+        {"type": "text", "text": "Hello, world!"}
+        """
+        let data = json.data(using: .utf8)!
+        let block = try JSONDecoder().decode(RawContentBlock.self, from: data)
+
+        if case .text(let text) = block.type {
+            #expect(text == "Hello, world!")
+        } else {
+            Issue.record("Expected .text, got \(block.type)")
+        }
+    }
+
+    @Test("RawContentBlock decodes tool_use content block")
+    func decodeToolUseBlock() throws {
+        let json = """
+        {"type": "tool_use", "id": "tu_123", "name": "Read", "input": {"file_path": "/tmp/test"}}
+        """
+        let data = json.data(using: .utf8)!
+        let block = try JSONDecoder().decode(RawContentBlock.self, from: data)
+
+        if case .toolUse(let id, let name) = block.type {
+            #expect(id == "tu_123")
+            #expect(name == "Read")
+        } else {
+            Issue.record("Expected .toolUse, got \(block.type)")
+        }
+    }
+
+    @Test("RawContentBlock decodes tool_result content block")
+    func decodeToolResultBlock() throws {
+        let json = """
+        {"type": "tool_result", "tool_use_id": "tu_456", "content": "file contents"}
+        """
+        let data = json.data(using: .utf8)!
+        let block = try JSONDecoder().decode(RawContentBlock.self, from: data)
+
+        if case .toolResult(let toolUseId) = block.type {
+            #expect(toolUseId == "tu_456")
+        } else {
+            Issue.record("Expected .toolResult, got \(block.type)")
+        }
+    }
+
+    @Test("RawContentBlock decodes unknown type as .other")
+    func decodeUnknownBlock() throws {
+        let json = """
+        {"type": "image", "source": {"type": "base64"}}
+        """
+        let data = json.data(using: .utf8)!
+        let block = try JSONDecoder().decode(RawContentBlock.self, from: data)
+
+        if case .other = block.type {
+            // Expected
+        } else {
+            Issue.record("Expected .other, got \(block.type)")
+        }
+    }
+
+    @Test("RawContentBlock round-trips through encode/decode")
+    func roundTrip() throws {
+        let json = """
+        {"type": "text", "text": "round trip test"}
+        """
+        let data = json.data(using: .utf8)!
+        let block = try JSONDecoder().decode(RawContentBlock.self, from: data)
+        let reEncoded = try JSONEncoder().encode(block)
+        let reDecoded = try JSONDecoder().decode(RawContentBlock.self, from: reEncoded)
+
+        if case .text(let text) = reDecoded.type {
+            #expect(text == "round trip test")
+        } else {
+            Issue.record("Expected .text after round-trip")
+        }
+    }
+
+    @Test("RawMessageContent decodes array of content blocks")
+    func decodeArrayContent() throws {
+        let json = """
+        [
+            {"type": "text", "text": "First paragraph"},
+            {"type": "text", "text": "Second paragraph"},
+            {"type": "tool_use", "id": "tu_1", "name": "Bash", "input": {"command": "ls"}}
+        ]
+        """
+        let data = json.data(using: .utf8)!
+        let content = try JSONDecoder().decode(RawMessageContent.self, from: data)
+
+        if case .array(let blocks) = content {
+            #expect(blocks.count == 3)
+            if case .text(let t1) = blocks[0].type {
+                #expect(t1 == "First paragraph")
+            } else {
+                Issue.record("Expected first block to be text")
+            }
+            if case .text(let t2) = blocks[1].type {
+                #expect(t2 == "Second paragraph")
+            } else {
+                Issue.record("Expected second block to be text")
+            }
+            if case .toolUse(let id, let name) = blocks[2].type {
+                #expect(id == "tu_1")
+                #expect(name == "Bash")
+            } else {
+                Issue.record("Expected third block to be toolUse")
+            }
+        } else {
+            Issue.record("Expected .array content")
+        }
+    }
+
+    @Test("RawMessageContent textContent extracts text from array blocks")
+    func textContentFromArray() throws {
+        let json = """
+        [
+            {"type": "text", "text": "Hello"},
+            {"type": "tool_use", "id": "tu_1", "name": "Read", "input": {}},
+            {"type": "text", "text": "World"}
+        ]
+        """
+        let data = json.data(using: .utf8)!
+        let content = try JSONDecoder().decode(RawMessageContent.self, from: data)
+
+        #expect(content.textContent == "Hello\nWorld")
+    }
+
+    @Test("RawMessageContent decodes string content")
+    func decodeStringContent() throws {
+        let json = """
+        "Just a plain string message"
+        """
+        let data = json.data(using: .utf8)!
+        let content = try JSONDecoder().decode(RawMessageContent.self, from: data)
+
+        if case .string(let text) = content {
+            #expect(text == "Just a plain string message")
+        } else {
+            Issue.record("Expected .string content")
+        }
+    }
+
+    @Test("Full assistant session entry with array content decodes correctly")
+    func fullAssistantEntryDecode() throws {
+        let json = """
+        {
+            "type": "assistant",
+            "uuid": "msg-001",
+            "parentUuid": "msg-000",
+            "sessionId": "sess-123",
+            "timestamp": "2026-01-15T10:30:00Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "I'll help you with that."},
+                    {"type": "tool_use", "id": "tu_abc", "name": "Read", "input": {"file_path": "/src/main.swift"}}
+                ],
+                "model": "claude-sonnet-4-5-20250514"
+            }
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let entry = try JSONDecoder().decode(RawSessionEntry.self, from: data)
+
+        #expect(entry.type == "assistant")
+        #expect(entry.uuid == "msg-001")
+        #expect(entry.message?.role == "assistant")
+        #expect(entry.message?.model == "claude-sonnet-4-5-20250514")
+
+        if case .array(let blocks) = entry.message?.content {
+            #expect(blocks.count == 2)
+            if case .text(let text) = blocks[0].type {
+                #expect(text == "I'll help you with that.")
+            } else {
+                Issue.record("Expected text block")
+            }
+            if case .toolUse(let id, let name) = blocks[1].type {
+                #expect(id == "tu_abc")
+                #expect(name == "Read")
+            } else {
+                Issue.record("Expected toolUse block")
+            }
+        } else {
+            Issue.record("Expected array content in assistant message")
+        }
+    }
+}

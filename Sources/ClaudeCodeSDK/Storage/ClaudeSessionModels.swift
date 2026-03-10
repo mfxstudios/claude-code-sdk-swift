@@ -252,6 +252,14 @@ internal enum RawMessageContent: Codable {
 internal struct RawContentBlock: Codable {
     let type: ContentBlockType
 
+    init(from decoder: Decoder) throws {
+        self.type = try ContentBlockType(from: decoder)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try type.encode(to: encoder)
+    }
+
     enum ContentBlockType: Codable {
         case text(String)
         case toolUse(id: String, name: String)
